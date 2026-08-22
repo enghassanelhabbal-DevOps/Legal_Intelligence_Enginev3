@@ -1,0 +1,51 @@
+version: "3.9"
+
+# Canonical local/deployment compose file. Two services, ONE image (see
+# Dockerfile) — the UI talks to the API over the internal Docker network via
+# LEGAL_API_URL, running ui/streamlit_app.py in "remote mode" (see that
+# file's module docstring). Neither service bakes in the local Qwen weights;
+# set LLM_BACKEND=qwen_transformers and mount a GPU (`deploy.resources` /
+# `--gpus`) only on hosts that actually have one.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn api.app:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEY: ${API_KEY:-demo-key}
+      DOCUMENTS_PATH: /app/legal_documents.json
+      ARTIFACT_DIR: /app/artifacts
+      LLM_BACKEND: ${LLM_BACKEND:-openai_compatible}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./legal_documents.json:/app/legal_documents.json:ro
+      - ./artifacts:/app/artifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: streamlit run ui/streamlit_app.py --server.address 0.0.0.0 --server.port 8501
+    ports:
+      - "8501:8501"
+    environment:
+      LEGAL_API_URL: http://api:8000/v1/query
+      DOCUMENTS_PATH: /app/legal_documents.json
+    volumes:
+      - ./legal_documents.json:/app/legal_documents.json:ro
+    depends_on:
+      api:
+        condition: service_healthy

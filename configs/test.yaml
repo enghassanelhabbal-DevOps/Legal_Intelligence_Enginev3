@@ -1,0 +1,17 @@
+# configs/test.yaml — Test environment settings
+# Used by pytest and the regression harness.
+
+runtime:
+  device: cpu             # tests always run on CPU for reproducibility
+  dense_batch_size: 8
+  rerank_batch_size: 8
+
+pipeline:
+  dense_candidates: 10
+  bm25_candidates: 5
+  rerank_candidates: 10
+  final_k: 3
+  max_context_chars: 4000
+
+logging:
+  level: WARNING          # suppress INFO noise during tests

@@ -1,0 +1,11 @@
+{
+  "version_id": "v1786896613",
+  "dataset_hash": "c0587726602003108bc9f1d598a7cddc43e8f950082a9efc60473c99038dab53",
+  "document_count": 952,
+  "embedding_model": "BAAI/bge-m3",
+  "embedding_model_hash": null,
+  "reranker_model": null,
+  "index_type": "faiss-flat-ip",
+  "embedding_cache_path": null,
+  "created_at": 1786896613.6383755
+}

@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "legal-intelligence-engine"
+version = "0.3.0"
+description = "Production-grade LLM-agnostic Legal AI Platform for Arabic legal retrieval"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "H Elhabbal" }]
+
+# Core dependencies: everything the RAG engine + API need to run retrieval
+# end-to-end on CPU. This is the single source of truth for the project's
+# dependency graph — requirements-portable.txt / requirements-qwen-m2200.txt /
+# api/requirements.txt have been folded into the extras below and removed.
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.7",
+    "numpy>=1.26,<3",
+    "torch>=2.5,<3",
+    "sentence-transformers>=5.0,<6",
+    "faiss-cpu>=1.8,<2",
+    "rank-bm25>=0.2",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# GPU-accelerated retrieval (swap faiss-cpu for faiss-gpu on a CUDA host).
+gpu = ["faiss-gpu>=1.8,<2"]
+
+# Local Qwen3 generation backend (transformers-based). Only needed on a host
+# that will actually run local inference (e.g. the M2200-class dev GPU).
+qwen = [
+    "transformers>=4.50,<5",
+    "accelerate>=1.10,<2",
+    "safetensors>=0.5,<1",
+    "huggingface_hub>=0.34",
+]
+
+# Minimal set for a Streamlit-Cloud-only deployment that talks to a remote
+# API (or runs the OpenAI-compatible backend) — no torch/faiss required.
+streamlit = [
+    "streamlit>=1.36",
+]
+
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+legal-rag = "src.legal_ai.cli:main"
+
+# Every module in this project imports itself as `src.legal_ai....` (59 call
+# sites). Rather than rewrite every import, `src` is kept as the real
+# top-level installed package (see src/__init__.py) so `pip install -e .`
+# matches what the code already assumes at runtime.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

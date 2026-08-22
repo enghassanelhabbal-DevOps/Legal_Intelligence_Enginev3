@@ -1,0 +1,28 @@
+stages:
+  build_eval_set:
+    cmd: python scripts/build_eval_set.py --documents legal_documents.json --output data/evaluation/eval_queries.json --sample-size 80 --seed 42
+    deps:
+      - scripts/build_eval_set.py
+      - legal_documents.json
+    outs:
+      - data/evaluation/eval_queries.json
+
+  regression_baseline:
+    cmd: python scripts/regression_harness.py --documents legal_documents.json --eval-set data/evaluation/eval_queries.json --output artifacts/reports/regression_baseline.json
+    deps:
+      - scripts/regression_harness.py
+      - legal_documents.json
+      - data/evaluation/eval_queries.json
+      - src/legal_ai/retrieval/bm25.py
+      - src/legal_ai/ingestion/normalization.py
+      - src/legal_ai/evaluation/metrics.py
+    outs:
+      - artifacts/reports/regression_baseline.json
+
+  quality_gate:
+    cmd: python scripts/quality_gate.py --report artifacts/reports/regression_baseline.json
+    deps:
+      - scripts/quality_gate.py
+      - artifacts/reports/regression_baseline.json
+      - src/legal_ai/evaluation/baseline.py
+    always_changed: true

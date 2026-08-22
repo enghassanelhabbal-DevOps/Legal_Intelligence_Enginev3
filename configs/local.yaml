@@ -1,0 +1,13 @@
+# configs/local.yaml — Local developer overrides
+# Inherits base.yaml; override only what changes on your local machine.
+
+# Example overrides (uncomment as needed):
+runtime:
+  device: auto            # change to "cpu" if no GPU available locally
+  dense_batch_size: 16    # lower batch size for limited VRAM
+
+logging:
+  level: DEBUG
+
+# api:
+#   rate_limit: 100       # relax rate limit for local testing

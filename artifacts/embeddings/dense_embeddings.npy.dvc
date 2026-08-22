@@ -1,0 +1,5 @@
+outs:
+- md5: 338aaaf0f6fe30ec16d89dbe43d02f40
+  size: 3899520
+  hash: md5
+  path: dense_embeddings.npy

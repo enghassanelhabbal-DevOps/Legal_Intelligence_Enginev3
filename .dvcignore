@@ -1,0 +1,7 @@
+# DVC ignores local cache and editor noise
+**/.pytest_cache/
+**/__pycache__/
+**/*.pyc
+**/.DS_Store
+**/.venv/
+**/node_modules/

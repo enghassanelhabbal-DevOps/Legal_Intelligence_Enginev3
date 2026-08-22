@@ -1,0 +1,27 @@
+{
+  "dataset_path": "C:\\Users\\H Elhabbal\\Downloads\\legal_documents.json",
+  "document_count": 952,
+  "duplicate_ids": [],
+  "duplicate_id_count": 0,
+  "empty_content_count": 0,
+  "empty_content_ids": [],
+  "missing_metadata_count": 0,
+  "missing_metadata_ids": [],
+  "missing_titles_count": 0,
+  "missing_title_ids": [],
+  "suspicious_article_identifiers": [],
+  "suspicious_article_identifier_count": 0,
+  "laws_represented": {
+    "قانون الإجراءات الجنائية": 480,
+    "196 - قانون الإجراءات الجنائية": 1,
+    "364 - قانون الإجراءات الجنائية": 1,
+    "440 - قانون الإجراءات الجنائية": 1,
+    "504 - قانون الإجراءات الجنائية": 1,
+    "قانون العقوبات طبقا لأحدث التعديلات بالقانون 95 لسنة 2003م": 468
+  },
+  "jurisdictions_represented": {
+    "Egyptian Legal RAG Dataset": 952
+  },
+  "encoding_issues": [],
+  "encoding_issue_count": 0
+}

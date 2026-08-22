@@ -1,0 +1,5 @@
+outs:
+- md5: 751e180616833fe91af9174388eab3d9
+  size: 21711640
+  hash: md5
+  path: embeddings_cache.json

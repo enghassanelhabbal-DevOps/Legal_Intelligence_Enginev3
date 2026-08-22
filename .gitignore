@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# DVC / datasets / models
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+.cache/
+
+# Large generated ML artifacts (dense embeddings / FAISS index / embedding
+# cache / the ingested corpus) are tracked by DVC, not git — see the
+# matching *.dvc pointer files, which ARE tracked in git and must never be
+# ignored.
+artifacts/embeddings/*.npy
+artifacts/embeddings/*.json
+artifacts/indexes/*.index
+!*.dvc
+!artifacts/reports/
+!artifacts/reports/.gitkeep
+
+data/**
+!data/.gitkeep
+!data/evaluation/
+!data/evaluation/eval_queries.json
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Build / logs
+*.log
+*.sqlite3
+build/
+dist/
+
+# Local runtime
+*.json.tmp

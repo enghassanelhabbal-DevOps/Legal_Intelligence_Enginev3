@@ -1,0 +1,19 @@
+# Streamlit Cloud deployment requirements.
+#
+# ui/streamlit_app.py runs in one of two modes (see its module docstring):
+#   - Remote mode (LEGAL_API_URL set): needs only streamlit + requests.
+#   - Embedded mode (no LEGAL_API_URL, e.g. a Streamlit-Cloud-only deployment
+#     with no separately hosted API): imports src.legal_ai.services.QueryService
+#     directly, which needs the retrieval stack (torch/faiss/sentence-transformers).
+#
+# This file covers BOTH modes so Streamlit Cloud works out of the box even
+# without a separately hosted API. If you deploy the API separately and only
+# ever run remote mode, you can trim this to `streamlit` + `requests`.
+streamlit>=1.36.0
+requests>=2.31.0
+numpy>=1.26,<3
+torch>=2.5,<3
+sentence-transformers>=5.0,<6
+faiss-cpu>=1.8,<2
+rank-bm25>=0.2
+pyyaml>=6.0

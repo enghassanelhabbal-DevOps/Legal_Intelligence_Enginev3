@@ -1,0 +1,5 @@
+outs:
+- md5: 40a09e283df3b6610c2dc63894f246b1
+  size: 3899437
+  hash: md5
+  path: dense_faiss.index

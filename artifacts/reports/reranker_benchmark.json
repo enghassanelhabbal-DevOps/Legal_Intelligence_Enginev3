@@ -1,0 +1,72 @@
+{
+  "batch_sizes": [
+    {
+      "batch_size": 1,
+      "mean_latency_ms": 30046.046875,
+      "p95_latency_ms": 39389.84375,
+      "throughput_queries_per_sec": 0.03328224644064903,
+      "peak_vram_mb": 0.0,
+      "runtime_info": {
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "gpu_name": null,
+        "cuda_version": "12.8",
+        "platform": "Windows-10-10.0.19045-SP0",
+        "python": "3.12.10",
+        "torch": "2.11.0+cu128",
+        "faiss": "1.15.0"
+      }
+    },
+    {
+      "batch_size": 2,
+      "mean_latency_ms": 25934.650390625,
+      "p95_latency_ms": 31055.923828125,
+      "throughput_queries_per_sec": 0.03855845332145691,
+      "peak_vram_mb": 0.0,
+      "runtime_info": {
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "gpu_name": null,
+        "cuda_version": "12.8",
+        "platform": "Windows-10-10.0.19045-SP0",
+        "python": "3.12.10",
+        "torch": "2.11.0+cu128",
+        "faiss": "1.15.0"
+      }
+    },
+    {
+      "batch_size": 4,
+      "mean_latency_ms": 23609.015625,
+      "p95_latency_ms": 29590.294921875,
+      "throughput_queries_per_sec": 0.0423566997051239,
+      "peak_vram_mb": 0.0,
+      "runtime_info": {
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "gpu_name": null,
+        "cuda_version": "12.8",
+        "platform": "Windows-10-10.0.19045-SP0",
+        "python": "3.12.10",
+        "torch": "2.11.0+cu128",
+        "faiss": "1.15.0"
+      }
+    },
+    {
+      "batch_size": 8,
+      "mean_latency_ms": 24336.12109375,
+      "p95_latency_ms": 29800.970703125,
+      "throughput_queries_per_sec": 0.0410911850631237,
+      "peak_vram_mb": 0.0,
+      "runtime_info": {
+        "device": "cpu",
+        "dtype": "torch.float32",
+        "gpu_name": null,
+        "cuda_version": "12.8",
+        "platform": "Windows-10-10.0.19045-SP0",
+        "python": "3.12.10",
+        "torch": "2.11.0+cu128",
+        "faiss": "1.15.0"
+      }
+    }
+  ]
+}

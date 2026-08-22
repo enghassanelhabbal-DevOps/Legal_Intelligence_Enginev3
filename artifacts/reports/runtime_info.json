@@ -1,0 +1,10 @@
+{
+  "device": "cpu",
+  "dtype": "torch.float32",
+  "gpu_name": null,
+  "cuda_version": "12.8",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "python": "3.12.10",
+  "torch": "2.11.0+cu128",
+  "faiss": "1.15.0"
+}

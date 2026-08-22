@@ -1,0 +1,45 @@
+# configs/base.yaml — Base configuration for Legal Intelligence Engine
+# All environments inherit from this file and may override individual values.
+# ARCHITECTURE_CONTRACT.md: no hard-coded paths, no magic numbers.
+
+runtime:
+  device: auto           # auto | cpu | cuda
+  gpu_id: 0
+  precision: auto        # auto | fp32 | fp16 | bf16
+  dense_batch_size: 32
+  rerank_batch_size: 32
+  num_threads: 0         # 0 = PyTorch default
+  enable_tf32: true
+  compile_reranker: false  # torch.compile off — CC 5.2 (M2200)
+  max_seq_length: 1024
+
+models:
+  dense: BAAI/bge-m3
+  reranker: BAAI/bge-reranker-v2-m3
+  llm_backend: qwen_transformers
+
+pipeline:
+  dense_candidates: 30
+  bm25_candidates: 10
+  rerank_candidates: 40
+  final_k: 5
+  rerank_max_chars: 3500
+  alpha: 0.75             # dense-prior weight in score fusion
+  max_context_chars: 14000
+
+artifacts:
+  embeddings_dir: artifacts/embeddings
+  indexes_dir: artifacts/indexes
+  reports_dir: artifacts/reports
+
+data:
+  raw_dir: data/raw
+  normalized_dir: data/normalized
+  evaluation_dir: data/evaluation
+
+api:
+  rate_limit: 30          # requests per 60-second window
+  # api_key: ""           # set via API_KEY env var; empty = no auth
+
+logging:
+  level: INFO
