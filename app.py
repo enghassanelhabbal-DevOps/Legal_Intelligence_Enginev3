@@ -120,10 +120,40 @@ def check_gemini_models(api_key: str) -> dict[str, Any]:
     except Exception as exc:
         return {"ok": False, "models": [], "error": f"network error: {exc}"}
 
-    if resp.status_code in (400, 401, 403):
-        return {"ok": False, "models": [], "error": "invalid_key"}
     if not resp.ok:
-        return {"ok": False, "models": [], "error": f"HTTP {resp.status_code}: {resp.text[:150]}"}
+        # IMPORTANT: do NOT collapse every 400/401/403 into "the key is
+        # wrong". Google returns 403 for several genuinely different
+        # problems that are NOT "you typed the key wrong":
+        #   - PERMISSION_DENIED: the Generative Language API is simply not
+        #     enabled yet for the Google Cloud project behind this key
+        #     (very common with a freshly created AI Studio key)
+        #   - the key has an HTTP-referrer or IP restriction that blocks
+        #     server-side calls (Streamlit runs server-side, not a browser)
+        #   - RESOURCE_EXHAUSTED: quota/rate limit, not an invalid key
+        # A blanket "invalid key" message here sends the user on a wild
+        # goose chase re-copying a key that was never the problem. We parse
+        # Google's own error message and show it instead.
+        try:
+            detail = resp.json().get("error", {})
+            status = detail.get("status", "")
+            message = detail.get("message", resp.text[:200])
+        except Exception:
+            status, message = "", resp.text[:200]
+
+        if status == "INVALID_ARGUMENT" and (
+            "api key not valid" in message.lower() or "api_key_invalid" in message.lower()
+        ):
+            return {"ok": False, "models": [], "error": "invalid_key"}
+        if status == "PERMISSION_DENIED" or resp.status_code == 403:
+            return {
+                "ok": False, "models": [],
+                "error": f"permission_denied: {message} "
+                "(الأغلب: خدمة Generative Language API غير مفعّلة على مشروع Google Cloud "
+                "بتاع المفتاح ده، أو المفتاح مقيّد بـ HTTP referrer/IP معيّن)",
+            }
+        if resp.status_code == 429:
+            return {"ok": False, "models": [], "error": f"rate_limited: {message}"}
+        return {"ok": False, "models": [], "error": f"HTTP {resp.status_code}: {message}"}
 
     try:
         data = resp.json().get("models", [])
@@ -170,7 +200,12 @@ def render_model_status_list(check_result: dict[str, Any], preferred: list[str],
         )
         return
     if not check_result.get("ok"):
-        st.markdown(f"{_status_dot('#ef4444')}**{label}: تعذّر التحقق** — {error}", unsafe_allow_html=True)
+        # Show the REAL reason instead of guessing — a 403 permission_denied
+        # (API not enabled / referrer-restricted key) is a completely
+        # different fix than a genuinely wrong key, and telling the user
+        # "your key is invalid" when it isn't just sends them in circles.
+        st.markdown(f"{_status_dot('#f59e0b')}**{label}: تعذّر التحقق**", unsafe_allow_html=True)
+        st.caption(str(error))
         return
 
     st.caption(f"✅ المفتاح شغّال — {len(live_models)} موديل متاح لهذا المفتاح")
@@ -1091,7 +1126,11 @@ def main() -> None:
         st.markdown("<div class='quick-grid'>", unsafe_allow_html=True)
         for option in quick_options:
             if st.button(option, key=f"quick_{option}", help="Use a sample legal question"):
-                st.session_state["chat_history"].append(("user", option))
+                # NOTE: only set pending_prompt here. The pending_prompt handler
+                # below is the single place that appends the user bubble — this
+                # button used to also append it directly, which produced the
+                # duplicate question bubble seen in the UI (the same question
+                # appended twice: once here, once by the handler below).
                 st.session_state["pending_prompt"] = option
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
