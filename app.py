@@ -935,6 +935,10 @@ def _call_openai_provider(question: str, context: str, config: dict[str, Any]) -
         return {"answer": None, "warnings": [f"OpenAI request error: {exc}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
 
 
+def _gemini_generate_once(url: str, payload: dict[str, Any]) -> requests.Response:
+    return requests.post(url, json=payload, timeout=30)
+
+
 def _call_gemini_provider(question: str, context: str, config: dict[str, Any]) -> dict[str, Any]:
     api_key = (config.get("google_key") or _get_secret("GOOGLE_API_KEY")).strip()
     if not api_key:
@@ -942,46 +946,65 @@ def _call_gemini_provider(question: str, context: str, config: dict[str, Any]) -
 
     model_name = config.get("gemini_model") or _get_secret("GEMINI_MODEL", "gemini-2.5-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    payload = {
-        "contents": [{
-            "parts": [{
-                "text": f"Use only the following legal context. Answer in Arabic with citations to the law and article. If the question is not a legal question, or the context doesn't address it, say so plainly in Arabic instead of guessing.\n\nQuestion: {question}\n\nContext:\n{context}"
-            }]
-        }],
-        "generationConfig": {
-            "temperature": 0.2,
-            # Gemini 2.5 models "think" by default before answering, and
-            # those hidden thinking tokens are deducted from
-            # maxOutputTokens. With the old 800-token cap this could (and
-            # did) consume most/all of the budget, leaving a truncated or
-            # completely empty visible answer — the actual cause of garbled
-            # answers and answers that silently fell back to raw retrieval
-            # text. thinkingBudget=0 disables it for this task (a grounded
-            # citation lookup doesn't need extended chain-of-thought), and
-            # the cap is raised now that context is no longer truncated
-            # either, so a full multi-article answer has room to fit.
-            "thinkingConfig": {"thinkingBudget": 0},
-            "maxOutputTokens": 2048,
-        },
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=30)
-        if not response.ok:
-            return {"answer": None, "warnings": [f"Gemini provider failed: {response.status_code} {response.text[:200]}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
-        data = response.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            block_reason = data.get("promptFeedback", {}).get("blockReason", "unknown")
-            return {"answer": None, "warnings": [f"Gemini returned no candidates (block_reason={block_reason})"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
-        finish_reason = candidates[0].get("finishReason", "")
-        parts = candidates[0].get("content", {}).get("parts", [{}])
-        text = "".join(p.get("text", "") for p in parts)
-        warnings = []
-        if finish_reason == "MAX_TOKENS" and not text:
-            warnings.append("Gemini hit the token limit before producing visible output (finishReason=MAX_TOKENS).")
-        return {"answer": text or None, "citations": [], "warnings": warnings, "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
-    except requests.RequestException as exc:
-        return {"answer": None, "warnings": [f"Gemini request error: {exc}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
+    prompt_text = (
+        "Use only the following legal context. Answer in Arabic with citations to the law and article. "
+        "If the question is not a legal question, or the context doesn't address it, say so plainly in "
+        f"Arabic instead of guessing.\n\nQuestion: {question}\n\nContext:\n{context}"
+    )
+    base_generation_config = {"temperature": 0.2, "maxOutputTokens": 2048}
+    # Gemini 2.5 models "think" by default before answering, and those
+    # hidden thinking tokens are deducted from maxOutputTokens — with a low
+    # cap this could consume the whole budget, leaving a truncated or empty
+    # visible answer. thinkingBudget=0 disables it for this grounded
+    # citation-lookup task. NOT every Gemini model/alias accepts this field
+    # though (e.g. gemini-flash-lite-latest rejects the entire request with
+    # 400 INVALID_ARGUMENT if it's present) — so we try with it first and
+    # silently retry once WITHOUT it if that specific rejection happens,
+    # rather than hardcoding a "which models support this" list that would
+    # go stale the moment Google ships a new model name.
+    attempts = [
+        {**base_generation_config, "thinkingConfig": {"thinkingBudget": 0}},
+        base_generation_config,
+    ]
+
+    last_response = None
+    for attempt_config in attempts:
+        payload = {
+            "contents": [{"parts": [{"text": prompt_text}]}],
+            "generationConfig": attempt_config,
+        }
+        try:
+            response = _gemini_generate_once(url, payload)
+        except requests.RequestException as exc:
+            return {"answer": None, "warnings": [f"Gemini request error: {exc}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
+
+        last_response = response
+        if response.ok:
+            break
+        # Only retry (without thinkingConfig) for the specific "this model
+        # doesn't understand one of my fields" case. Any other failure
+        # (bad key, quota, real content issue) should surface immediately
+        # instead of silently retrying and doubling latency for no reason.
+        is_invalid_argument = response.status_code == 400 and "INVALID_ARGUMENT" in response.text
+        if not (is_invalid_argument and "thinkingConfig" in attempt_config):
+            break
+
+    response = last_response
+    if not response.ok:
+        return {"answer": None, "warnings": [f"Gemini provider failed: {response.status_code} {response.text[:200]}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
+
+    data = response.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        block_reason = data.get("promptFeedback", {}).get("blockReason", "unknown")
+        return {"answer": None, "warnings": [f"Gemini returned no candidates (block_reason={block_reason})"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
+    finish_reason = candidates[0].get("finishReason", "")
+    parts = candidates[0].get("content", {}).get("parts", [{}])
+    text = "".join(p.get("text", "") for p in parts)
+    warnings = []
+    if finish_reason == "MAX_TOKENS" and not text:
+        warnings.append("Gemini hit the token limit before producing visible output (finishReason=MAX_TOKENS).")
+    return {"answer": text or None, "citations": [], "warnings": warnings, "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
 
 
 def _call_custom_provider(question: str, context: str, config: dict[str, Any]) -> dict[str, Any]:
