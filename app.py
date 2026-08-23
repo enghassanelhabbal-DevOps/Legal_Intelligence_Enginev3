@@ -945,18 +945,41 @@ def _call_gemini_provider(question: str, context: str, config: dict[str, Any]) -
     payload = {
         "contents": [{
             "parts": [{
-                "text": f"Use only the following legal context. Answer in Arabic with citations to the law and article.\n\nQuestion: {question}\n\nContext:\n{context}"
+                "text": f"Use only the following legal context. Answer in Arabic with citations to the law and article. If the question is not a legal question, or the context doesn't address it, say so plainly in Arabic instead of guessing.\n\nQuestion: {question}\n\nContext:\n{context}"
             }]
         }],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 800},
+        "generationConfig": {
+            "temperature": 0.2,
+            # Gemini 2.5 models "think" by default before answering, and
+            # those hidden thinking tokens are deducted from
+            # maxOutputTokens. With the old 800-token cap this could (and
+            # did) consume most/all of the budget, leaving a truncated or
+            # completely empty visible answer — the actual cause of garbled
+            # answers and answers that silently fell back to raw retrieval
+            # text. thinkingBudget=0 disables it for this task (a grounded
+            # citation lookup doesn't need extended chain-of-thought), and
+            # the cap is raised now that context is no longer truncated
+            # either, so a full multi-article answer has room to fit.
+            "thinkingConfig": {"thinkingBudget": 0},
+            "maxOutputTokens": 2048,
+        },
     }
     try:
         response = requests.post(url, json=payload, timeout=30)
         if not response.ok:
             return {"answer": None, "warnings": [f"Gemini provider failed: {response.status_code} {response.text[:200]}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
         data = response.json()
-        text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-        return {"answer": text or None, "citations": [], "warnings": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
+        candidates = data.get("candidates", [])
+        if not candidates:
+            block_reason = data.get("promptFeedback", {}).get("blockReason", "unknown")
+            return {"answer": None, "warnings": [f"Gemini returned no candidates (block_reason={block_reason})"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
+        finish_reason = candidates[0].get("finishReason", "")
+        parts = candidates[0].get("content", {}).get("parts", [{}])
+        text = "".join(p.get("text", "") for p in parts)
+        warnings = []
+        if finish_reason == "MAX_TOKENS" and not text:
+            warnings.append("Gemini hit the token limit before producing visible output (finishReason=MAX_TOKENS).")
+        return {"answer": text or None, "citations": [], "warnings": warnings, "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
     except requests.RequestException as exc:
         return {"answer": None, "warnings": [f"Gemini request error: {exc}"], "citations": [], "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0}, "evidence": []}
 
@@ -1092,29 +1115,31 @@ def render_sidebar() -> dict[str, Any]:
 
         # API keys are entered/resolved BEFORE the model dropdown, so the
         # dropdown itself can reflect what the key actually has access to.
+        #
+        # NOTE: fields are intentionally left EMPTY by default now, even
+        # when a secret is configured — a pre-filled value could leak the
+        # key in a screenshot or screen-share. The key still works exactly
+        # the same "silently" via Streamlit Secrets: leave the box empty and
+        # the app resolves the real key from st.secrets behind the scenes
+        # (see the `_or_secret` fallback right below); typing something
+        # here simply overrides that secret for this session only.
         st.markdown("### API keys")
-        st.caption("محجوزة تلقائيًا من Streamlit Secrets لو متوفرة — تقدر تستبدلها هنا وقتيًا")
-        openai_key = st.text_input(
-            "OpenAI API key", value=_get_secret("OPENAI_API_KEY"), type="password",
-            help="Optional for cloud LLM access",
-        )
-        google_key = st.text_input(
-            "Google API key", value=_get_secret("GOOGLE_API_KEY"), type="password",
-            help="Optional for Gemini access",
-        )
-        hf_token = st.text_input(
-            "Hugging Face token", value=_get_secret("HF_TOKEN"), type="password",
-            help="Optional for model downloads / private models",
-        )
-        custom_endpoint = st.text_input(
-            "Custom endpoint",
-            value=_get_secret("LEGAL_API_URL"),
-            placeholder="https://api.example.com/v1",
-        )
-        api_key = st.text_input(
-            "Backend API key", value=_get_secret("API_KEY"), type="password",
-            help="Optional: x-api-key for Custom API. Defaults to Streamlit Secrets.API_KEY if set.",
-        )
+        st.caption("الخانات فاضية افتراضيًا حتى لو المفتاح متظبط في Secrets — بيشتغل من ورا الكواليس من غير ما يظهر هنا. اكتب في الخانة بس لو عايز تستبدله مؤقتًا.")
+        openai_key_input = st.text_input("OpenAI API key", value="", type="password", help="Optional for cloud LLM access")
+        google_key_input = st.text_input("Google API key", value="", type="password", help="Optional for Gemini access")
+        hf_token = st.text_input("Hugging Face token", value="", type="password", help="Optional for model downloads / private models")
+        custom_endpoint_input = st.text_input("Custom endpoint", value="", placeholder="https://api.example.com/v1")
+        api_key_input = st.text_input("Backend API key", value="", type="password", help="Optional: x-api-key for Custom API. Defaults to Streamlit Secrets.API_KEY if set.")
+
+        # Resolve the EFFECTIVE key used everywhere below: whatever the user
+        # just typed, falling back to the configured secret. This is what
+        # keeps the boxes empty-looking while the app still works.
+        openai_key = openai_key_input or _get_secret("OPENAI_API_KEY")
+        google_key = google_key_input or _get_secret("GOOGLE_API_KEY")
+        custom_endpoint = custom_endpoint_input or _get_secret("LEGAL_API_URL")
+        api_key = api_key_input or _get_secret("API_KEY")
+        if openai_key_input or google_key_input or api_key_input:
+            st.caption("✳️ بتستخدم مفتاح مكتوب يدويًا في الخانة (مش من Secrets) للجلسة دي بس.")
 
         st.markdown("### 🔎 حالة الموديلات (تحقق مباشر من المزوّد)")
         if provider == "OpenAI":
