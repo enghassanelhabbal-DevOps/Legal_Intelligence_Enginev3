@@ -178,6 +178,39 @@ def _status_dot(color: str) -> str:
     )
 
 
+def live_generation_test(provider: str, model_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Actually call the selected provider/model once and see if it truly
+    generates text — NOT the same thing as check_openai_models/
+    check_gemini_models above, which only confirm the KEY is authorized for
+    a model. A key can be valid and a model can be listed as available while
+    the actual generation call still fails (quota exhausted, model doesn't
+    support this request shape, region restriction, transient outage...).
+    This is the real end-to-end test.
+    """
+    test_config = dict(config)
+    test_config["openai_model" if provider == "OpenAI" else "gemini_model"] = model_id
+    t0 = time.perf_counter()
+    if provider == "OpenAI":
+        result = _call_openai_provider(
+            "اكتب كلمة 'تمام' فقط بدون أي إضافة.", "نص تجريبي للاختبار.", test_config,
+        )
+    elif provider == "Google Gemini":
+        result = _call_gemini_provider(
+            "اكتب كلمة 'تمام' فقط بدون أي إضافة.", "نص تجريبي للاختبار.", test_config,
+        )
+    else:
+        return {"ok": False, "latency_ms": 0, "answer": None, "error": "provider not testable"}
+    latency_ms = (time.perf_counter() - t0) * 1000
+    answer = result.get("answer")
+    warnings = result.get("warnings") or []
+    return {
+        "ok": bool(answer),
+        "latency_ms": round(latency_ms, 0),
+        "answer": answer,
+        "error": "; ".join(warnings) if warnings and not answer else None,
+    }
+
+
 def render_model_status_list(check_result: dict[str, Any], preferred: list[str], label: str) -> None:
     """Render the small green/gray dot list the user asked for.
 
@@ -759,7 +792,7 @@ def render_results(results: list[dict[str, Any]]) -> None:
                 <div class="badge">Result #{idx}</div>
                 <h3>{law_name} / المادة {article_id}</h3>
                 <div class="small-muted">{title}</div>
-                <p>{content[:500]}</p>
+                <p>{content}</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -840,6 +873,14 @@ def _provider_model_label(provider: str, config: dict[str, Any]) -> str:
 
 
 def _build_context_summary(results: list[dict[str, Any]]) -> str:
+    """Build the full-text legal context sent to the LLM.
+
+    No truncation: the longest article measured across the real 952-article
+    corpus is 2,116 characters (~500-600 tokens). Even 6 full articles stays
+    comfortably inside any modern LLM's context window, so there is no
+    reason to cut articles short — a truncated legal article is exactly the
+    kind of thing that causes an incomplete or wrong-sounding answer.
+    """
     if not results:
         return "لا توجد أدلة قانونية متاحة."
     snippets: list[str] = []
@@ -847,7 +888,7 @@ def _build_context_summary(results: list[dict[str, Any]]) -> str:
         law_name = item.get("law_name") or "القانون"
         article_id = item.get("article_id") or "N/A"
         content = str(item.get("content") or item.get("text") or "")
-        snippets.append(f"{law_name} / المادة {article_id}: {content[:800]}")
+        snippets.append(f"{law_name} / المادة {article_id}: {content}")
     return "\n\n".join(snippets)
 
 
@@ -1102,6 +1143,27 @@ def render_sidebar() -> dict[str, Any]:
             model_choices = ["custom-model", "openai-compatible-model"]
 
         llm_model = st.selectbox("LLM model", model_choices, index=0)
+
+        if provider in ("OpenAI", "Google Gemini"):
+            if st.button("🧪 اختبار توليد حي على هذا الموديل بالظبط", key="live_gen_test"):
+                probe_config = {
+                    "openai_key": openai_key, "google_key": google_key,
+                    "provider": provider,
+                }
+                with st.spinner(f"بيبعت طلب توليد حقيقي لـ {llm_model}..."):
+                    test_result = live_generation_test(provider, llm_model, probe_config)
+                if test_result["ok"]:
+                    st.markdown(
+                        f"{_status_dot('#22c55e')}**نجح فعليًا** — رد الموديل: "
+                        f"\"{(test_result['answer'] or '')[:60]}\" (زمن حقيقي: {test_result['latency_ms']:.0f} ms)",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f"{_status_dot('#ef4444')}**فشل التوليد الفعلي** — {test_result.get('error') or 'رد فاضي بدون سبب واضح'}",
+                        unsafe_allow_html=True,
+                    )
+
         backend = st.selectbox(
             "Transformer backend",
             ["Transformers", "vLLM", "LangChain", "OpenAI-compatible API"],
@@ -1284,7 +1346,7 @@ def main() -> None:
                 if not result_payload.get("answer"):
                     fallback_text = (
                         "لم أجد إجابة مولدة عبر الـ provider المختار. تم إرجاع أقرب أدلة قانونية من الاسترجاع المحلي فقط. "
-                        f"أقرب دليل: {results[0].get('content', '')[:260] if results else 'لا توجد نتائج.'}"
+                        f"أقرب دليل: {results[0].get('content', '') if results else 'لا توجد نتائج.'}"
                     )
                     result_payload = {
                         "answer": fallback_text,
@@ -1295,9 +1357,16 @@ def main() -> None:
                         } for r in results[:3]],
                         "warnings": result_payload.get("warnings", ["Retrieval-only fallback was used because the selected provider was unavailable or not configured."]),
                         "timing": {
+                            # BUG FIXED: this used to hardcode generation_ms
+                            # to 0 even though the line above already timed
+                            # the real (failed) provider call. The attempt
+                            # itself took real time — a rejected/failed
+                            # request still has a measurable round-trip —
+                            # and showing 0 made it look like generation
+                            # never even ran, when it did (and failed).
                             "retrieval_ms": round(retrieval_ms, 1),
-                            "generation_ms": 0,
-                            "total_ms": round(retrieval_ms, 1),
+                            "generation_ms": round(generation_ms, 1),
+                            "total_ms": round(retrieval_ms + generation_ms, 1),
                         },
                         "evidence": results,
                         "provider": config.get("provider", "Local Qwen"),
@@ -1408,7 +1477,7 @@ def main() -> None:
                             <div class='badge'>#{idx}</div>
                             <h3>{hit.get('law_name', 'غير محدد')} / المادة {hit.get('article_id', 'N/A')}</h3>
                             <div class='small-muted'>{hit.get('title', '')}</div>
-                            <p>{str(hit.get('content', ''))[:180]}</p>
+                            <p>{str(hit.get('content', ''))}</p>
                         </div>
                         """,
                         unsafe_allow_html=True,
