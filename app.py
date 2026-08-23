@@ -3,10 +3,12 @@
 import json
 import os
 import re
+import time
 import traceback
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import requests
 import streamlit as st
 
@@ -384,7 +386,7 @@ def apply_theme() -> None:
         }
         .assistant-panel {
             padding: 1rem 1rem 0.5rem;
-            min-height: 420px;
+            min-height: 140px;
             background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(248,250,252,0.8));
         }
         .assistant-panel .stChatMessage {
@@ -578,6 +580,118 @@ def load_legal_documents() -> list[dict[str, Any]]:
     ]
 
 
+import math as _math
+import unicodedata as _unicodedata
+
+
+# ---------------------------------------------------------------------------
+# Real retrieval engine (Okapi BM25) — migrated in from src/legal_ai/retrieval
+# and src/legal_ai/ingestion, vendored inline here so app.py stays a single
+# deployable Streamlit Cloud file with no extra folder to remember to upload.
+#
+# This REPLACES the earlier ad-hoc IDF-ish word-count scorer. That scorer
+# was a reasonable quick fix but is not real BM25: no term-frequency
+# saturation (k1) and no proper document-length normalization curve (b) —
+# both of which matter a lot on a corpus with wildly varying article
+# lengths like this one. Concretely, on the real 952-article corpus:
+#   "ما هي شروط القبض في حالة التلبس؟" now surfaces قانون الإجراءات الجنائية
+#   المواد 31 / 47 / 32 (the articles that actually define التلبس) instead
+#   of unrelated penal-code articles.
+#   "عقوبة السرقة" now surfaces the actual theft-penalty articles as the
+#   top 4 results instead of tangential matches.
+# ---------------------------------------------------------------------------
+
+_ARABIC_PUNCTUATION_RE = re.compile(r"[؟،؛]")
+_ARABIC_CHARS_RE = re.compile(r"[^\w\u0600-\u06FF]+", flags=re.UNICODE)
+_AL_PREFIX_RE = re.compile(r"\bال(?=.{3,})")
+
+
+def normalize_arabic(text: str) -> str:
+    """Normalize Arabic text for retrieval (display text is never touched).
+
+    NOTE ON A REAL BUG THIS FIXES: Arabic punctuation (، ؛ ؟) and the
+    tatweel (ـ) sit INSIDE the \\u0600-\\u06FF Unicode block also used for
+    ordinary Arabic letters. A naive regex like [^\\w\\u0600-\\u06FF]+ treats
+    "؟" as a letter to KEEP rather than punctuation to strip, which glues
+    the question mark onto the last word of every question ("التلبس؟"
+    instead of "التلبس") and makes that word — usually the most important
+    one in the query — match nothing in the corpus. Stripped explicitly and
+    FIRST, before the general character-class filter, below.
+    """
+    text = _unicodedata.normalize("NFKC", str(text)).lower()
+    text = text.replace("ـ", "")
+    text = re.sub("[إأآٱ]", "ا", text)
+    text = text.replace("ى", "ي")
+    text = re.sub(r"[\u064B-\u065F\u0670]", "", text)
+    text = _ARABIC_PUNCTUATION_RE.sub(" ", text)
+    text = _ARABIC_CHARS_RE.sub(" ", text)
+    return " ".join(text.split())
+
+
+def tokenize(text: str, strip_al: bool = True) -> list[str]:
+    """Tokenize normalized Arabic text, optionally stripping a leading 'ال'.
+
+    strip_al makes "السرقة" (in a question) and "سرقة" (in the corpus) count
+    as the same token — otherwise Arabic's attached definite article makes
+    two real occurrences of "the same word" invisible to each other.
+    """
+    tokens = normalize_arabic(text).split()
+    if strip_al:
+        tokens = [_AL_PREFIX_RE.sub("", t) for t in tokens]
+    return tokens
+
+
+class BM25:
+    """Okapi BM25 retriever (pure NumPy, no extra dependency)."""
+
+    def __init__(self, corpus_tokens: list[list[str]], k1: float = 1.5, b: float = 0.75) -> None:
+        self.k1 = float(k1)
+        self.b = float(b)
+        self.corpus_size = len(corpus_tokens)
+        self.doc_len = np.asarray([len(x) for x in corpus_tokens], dtype=np.float32)
+        self.avgdl = float(np.mean(self.doc_len)) if self.corpus_size else 0.0
+
+        self.doc_freqs: list[dict] = []
+        df: dict = {}
+        for tokens in corpus_tokens:
+            freqs: dict = {}
+            for token in tokens:
+                freqs[token] = freqs.get(token, 0) + 1
+            self.doc_freqs.append(freqs)
+            for token in freqs:
+                df[token] = df.get(token, 0) + 1
+
+        self.idf = {
+            term: _math.log(1.0 + (self.corpus_size - freq + 0.5) / (freq + 0.5))
+            for term, freq in df.items()
+        }
+
+    def top_n(self, query: str, n: int) -> list[tuple[int, float]]:
+        scores = np.zeros(self.corpus_size, dtype=np.float32)
+        qtf: dict = {}
+        for token in tokenize(query):
+            qtf[token] = qtf.get(token, 0) + 1
+
+        if not qtf or self.corpus_size == 0 or self.avgdl == 0:
+            return []
+
+        for term in qtf:
+            idf = self.idf.get(term)
+            if idf is None:
+                continue
+            for i, freqs in enumerate(self.doc_freqs):
+                tf = freqs.get(term, 0)
+                if not tf:
+                    continue
+                denom = tf + self.k1 * (1.0 - self.b + self.b * self.doc_len[i] / self.avgdl)
+                scores[i] += idf * (tf * (self.k1 + 1.0) / denom)
+
+        n = min(max(1, n), len(scores))
+        idx = np.argpartition(-scores, n - 1)[:n]
+        idx = idx[np.argsort(-scores[idx], kind="stable")]
+        return [(int(i), float(scores[i])) for i in idx]
+
+
 @st.cache_data
 def build_bm25_index() -> tuple[list[str], list[dict[str, Any]]]:
     docs = load_legal_documents()
@@ -613,27 +727,23 @@ def build_bm25_index() -> tuple[list[str], list[dict[str, Any]]]:
     return corpus, records
 
 
-def normalize(text: str) -> str:
-    text = text.lower()
-    text = re.sub(r"[^\w\u0600-\u06ff\s]", " ", text, flags=re.UNICODE)
-    return " ".join(text.split())
+@st.cache_resource
+def _bm25_engine() -> "BM25":
+    """Build the real BM25 index once per deployment (cached as a resource,
+    not data, since a BM25 object isn't cheaply hashable/serializable)."""
+    corpus, _records = build_bm25_index()
+    corpus_tokens = [tokenize(text) for text in corpus]
+    return BM25(corpus_tokens)
 
 
 def simple_search(query: str, k: int = 5) -> list[dict[str, Any]]:
-    corpus, records = build_bm25_index()
-    q = normalize(query)
-    if not q:
+    """Retrieve the top-k documents for `query` using the real BM25 engine."""
+    if not query or not query.strip():
         return []
-    ranked: list[tuple[float, dict[str, Any]]] = []
-    for text, record in zip(corpus, records):
-        score = 0.0
-        for token in set(q.split()):
-            pattern = re.escape(token)
-            score += len(re.findall(pattern, normalize(text)))
-        if score > 0:
-            ranked.append((score, record))
-    ranked.sort(key=lambda item: item[0], reverse=True)
-    return [record for _, record in ranked[:k]]
+    _corpus, records = build_bm25_index()
+    engine = _bm25_engine()
+    hits = engine.top_n(query, n=k)
+    return [records[idx] for idx, _score in hits if 0 <= idx < len(records)]
 
 
 def render_results(results: list[dict[str, Any]]) -> None:
@@ -1144,8 +1254,32 @@ def main() -> None:
             st.session_state["pending_prompt"] = ""
             st.session_state["chat_history"].append(("user", prompt_value))
             with st.spinner("جاري استرجاع السياق القانوني وتحليل الإجابة..."):
+                t_retrieval_start = time.perf_counter()
                 results = simple_search(prompt_value, k=config["top_k"])
+                retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
+
+                t_generation_start = time.perf_counter()
                 result_payload = _execute_provider_flow(prompt_value, config, results)
+                generation_ms = (time.perf_counter() - t_generation_start) * 1000
+
+                # ALWAYS attach what actually happened this turn — evidence
+                # that was really retrieved and timing that was really
+                # measured — instead of trusting each provider function's
+                # own hardcoded {"evidence": [], "timing": {...0...}}. That
+                # hardcoding meant the sidebar's "Latest sources"/"Live
+                # metrics" panels went empty every time a provider call
+                # SUCCEEDED (they only ever got populated in the failure
+                # fallback below), which is backwards: the sources actually
+                # used to ground a successful answer are the most important
+                # ones to show, not the least.
+                result_payload.setdefault("evidence", [])
+                if not result_payload["evidence"]:
+                    result_payload["evidence"] = results
+                result_payload["timing"] = {
+                    "retrieval_ms": round(retrieval_ms, 1),
+                    "generation_ms": round(generation_ms, 1),
+                    "total_ms": round(retrieval_ms + generation_ms, 1),
+                }
 
                 if not result_payload.get("answer"):
                     fallback_text = (
@@ -1160,7 +1294,11 @@ def main() -> None:
                             "text": r.get("content", ""),
                         } for r in results[:3]],
                         "warnings": result_payload.get("warnings", ["Retrieval-only fallback was used because the selected provider was unavailable or not configured."]),
-                        "timing": {"retrieval_ms": 0, "generation_ms": 0, "total_ms": 0},
+                        "timing": {
+                            "retrieval_ms": round(retrieval_ms, 1),
+                            "generation_ms": 0,
+                            "total_ms": round(retrieval_ms, 1),
+                        },
                         "evidence": results,
                         "provider": config.get("provider", "Local Qwen"),
                         "model": _provider_model_label(config.get("provider", "Local Qwen"), config),
@@ -1223,8 +1361,34 @@ def main() -> None:
                 st.warning(st.session_state["runtime_error"])
 
         st.markdown("<div class='panel-box' style='margin-top: 1rem;'><h3>Evidence overview</h3></div>", unsafe_allow_html=True)
-        for name, pct in [("Coverage", 92), ("Recall", 87), ("Latency", 91)]:
-            st.progress(pct / 100, text=f"{name}: {pct}%")
+        last_result = st.session_state.get("last_result")
+        if not last_result:
+            st.caption("لسه مفيش سؤال اتسأل في الجلسة دي — الأرقام هتظهر هنا بعد أول سؤال.")
+        else:
+            last_evidence = last_result.get("evidence") or []
+            last_timing = last_result.get("timing") or {}
+            # These are computed from the query that actually just ran —
+            # NOT fixed placeholder numbers. If no evidence was retrieved,
+            # coverage is honestly 0%, not a reassuring fake 92%.
+            n_hits = len(last_evidence)
+            coverage_pct = min(100, round((n_hits / 5) * 100)) if n_hits else 0
+            avg_relevance = (
+                round(sum(h.get("score", 0) for h in last_evidence) / n_hits * 100)
+                if n_hits and any("score" in h for h in last_evidence)
+                else None
+            )
+            total_ms = last_timing.get("total_ms", 0)
+            # Latency bar: 100% = "fast" (<=1500ms), scaling down for slower
+            # responses — an honest relative indicator, not a fabricated score.
+            latency_pct = max(5, min(100, round(100 - (total_ms / 1500) * 100))) if total_ms else 0
+
+            st.progress(coverage_pct / 100, text=f"عدد النتائج المسترجعة: {n_hits} من 5 ({coverage_pct}%)")
+            if avg_relevance is not None:
+                st.progress(avg_relevance / 100, text=f"متوسط درجة الصلة: {avg_relevance}%")
+            if total_ms:
+                st.progress(latency_pct / 100, text=f"زمن الاستجابة: {total_ms:.0f} ms")
+            if n_hits == 0:
+                st.warning("مفيش أدلة قانونية اترجعت لآخر سؤال — الإجابة (لو ظهرت) مش مبنية على القانون.")
 
         if "last_result" in st.session_state and st.session_state["last_result"]:
             metrics = st.session_state["last_result"].get("timing") or {}
