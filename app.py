@@ -56,8 +56,16 @@ _PREFERRED_OPENAI_MODELS = [
     "o1", "o1-mini", "o3", "o3-mini", "o4-mini", "gpt-3.5-turbo",
 ]
 _PREFERRED_GEMINI_MODELS = [
-    "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
-    "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash",
+    # Ordered from live evidence in this deployment, not assumption:
+    # gemini-2.5-pro started returning 404 "no longer available to new
+    # users" (confirmed via the live generation test), while
+    # gemini-3.1-flash-lite-preview was confirmed working. This ordering is
+    # just a display hint — the actual green/gray dot always comes from the
+    # live /models check above it, never from this list.
+    "gemini-3.1-flash-lite-preview", "gemini-3.1-pro-preview",
+    "gemini-2.5-flash", "gemini-2.5-flash-lite",
+    "gemini-2.0-flash", "gemini-1.5-flash",
+    "gemini-2.5-pro", "gemini-1.5-pro",  # kept last: known to reject new users as of this deployment
 ]
 
 # Non-chat model families we don't want cluttering the picker even though
@@ -243,7 +251,8 @@ def render_model_status_list(check_result: dict[str, Any], preferred: list[str],
         st.caption(str(error))
         return
 
-    st.caption(f"✅ المفتاح شغّال — {len(live_models)} موديل متاح لهذا المفتاح")
+    st.caption(f"✅ المفتاح شغّال — {len(live_models)} موديل مُصرَّح لهذا المفتاح")
+    st.caption("⚠️ النقطة الخضرا هنا معناها إن المفتاح *مُصرَّح* له بالموديل حسب قايمة Google الرسمية — مش ضمان إن التوليد هيشتغل فعليًا (موديل ممكن يتقفل لمستخدمين جدد فجأة). الضمان الحقيقي هو زرار **\"اختبار توليد حي\"** تحت قايمة الموديل.")
 
     # Preferred/well-known models first (in our curated order), each flagged
     # green/gray based on what the provider actually returned for this key.
@@ -278,296 +287,217 @@ def apply_theme() -> None:
     st.markdown(
         """
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+
+        /* =====================================================================
+           ROOT / RTL FOUNDATION
+           This is the actual fix for the Arabic/English bidi bug reported
+           earlier: the app never declared a base text direction anywhere,
+           so the browser's automatic per-paragraph direction guesser decided
+           alignment independently for every bubble/card — inconsistently.
+           direction: rtl here sets ONE base direction for the whole app;
+           unicode-bidi: plaintext on text-bearing elements below lets any
+           embedded Latin word/number (model names, years, "ms") flow
+           correctly as an isolated run INSIDE the RTL paragraph instead of
+           flipping the whole line's alignment.
+           ===================================================================== */
+        html, body, [data-testid="stAppViewContainer"], .stApp,
+        [data-testid="stSidebar"], [data-testid="block-container"] {
+            direction: rtl;
+        }
+        * { font-family: 'Tajawal', 'Inter', -apple-system, sans-serif; }
+
+        :root {
+            --ink: #0f1222;
+            --ink-soft: #4b5170;
+            --muted: #8489a3;
+            --line: rgba(75, 81, 112, 0.14);
+            --surface: rgba(255, 255, 255, 0.92);
+            --surface-solid: #ffffff;
+            --bg-a: #f3f1fb;
+            --bg-b: #eef2ff;
+            --primary: #4338ca;
+            --primary-2: #6d28d9;
+            --accent: #d97706;
+            --accent-soft: #fef3c7;
+            --success: #10b981;
+            --danger: #f43f5e;
+            --warn: #f59e0b;
+            --radius-lg: 22px;
+            --radius-md: 16px;
+            --radius-sm: 12px;
+            --shadow-soft: 0 10px 30px rgba(67, 56, 202, 0.08);
+            --shadow-card: 0 4px 16px rgba(15, 18, 34, 0.05);
+        }
+
         html, body, [data-testid="stAppViewContainer"] {
-            background: #f5f7fb;
-            color: #0f172a;
+            background: var(--bg-a);
+            color: var(--ink);
         }
         .stApp {
-            background: linear-gradient(180deg, #f7f9fc 0%, #f3f6fb 100%);
+            background:
+                radial-gradient(1100px 500px at 15% -10%, rgba(109, 40, 217, 0.10), transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, rgba(217, 119, 6, 0.08), transparent 55%),
+                linear-gradient(180deg, var(--bg-a) 0%, var(--bg-b) 100%);
+            background-attachment: fixed;
         }
         [data-testid="stSidebar"] {
-            background: rgba(248, 250, 252, 0.92);
-            border-right: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(18px);
+            border-left: 1px solid var(--line);
         }
         [data-testid="block-container"] {
-            padding-top: 1.2rem;
+            padding-top: 1.4rem;
+            max-width: 1400px;
         }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(67, 56, 202, 0.25); border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(67, 56, 202, 0.45); }
+
+        @keyframes fadeSlideIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulseDot {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+            50%      { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
         .top-shell {
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            border-radius: 26px;
-            padding: 1rem 1.2rem 0.25rem;
-            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+            background: var(--surface);
+            backdrop-filter: blur(14px);
+            border: 1px solid var(--line);
+            border-radius: 28px;
+            padding: 1.1rem 1.3rem 0.3rem;
+            box-shadow: var(--shadow-soft);
+            animation: fadeSlideIn 0.5s ease;
         }
-        .brand-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-        }
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #0f172a;
-        }
+        .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 0.85rem; font-size: 1.3rem; font-weight: 800; color: var(--ink); unicode-bidi: plaintext; }
         .brand-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 2.3rem;
-            height: 2.3rem;
-            border-radius: 0.85rem;
-            background: linear-gradient(135deg, #8b5cf6, #3b82f6);
-            color: white;
-            font-size: 1.1rem;
-            box-shadow: 0 12px 30px rgba(96, 165, 250, 0.28);
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 2.6rem; height: 2.6rem; border-radius: 1rem;
+            background: linear-gradient(135deg, var(--primary-2), var(--primary));
+            color: white; font-size: 1.25rem;
+            box-shadow: 0 12px 28px rgba(76, 29, 149, 0.32);
         }
         .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            border-radius: 999px;
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.25);
-            padding: 0.38rem 0.7rem;
-            color: #166534;
-            font-size: 0.72rem;
-            font-weight: 700;
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            border-radius: 999px; background: rgba(16, 185, 129, 0.10);
+            border: 1px solid rgba(16, 185, 129, 0.28);
+            padding: 0.42rem 0.85rem; color: #047857; font-size: 0.74rem; font-weight: 800;
         }
+        .status-pill::before { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--success); animation: pulseDot 2s infinite; }
         .hero-bar {
-            background: linear-gradient(135deg, rgba(96,165,250,0.10), rgba(172,146,250,0.08));
-            border: 1px solid rgba(148,163,184,0.18);
-            border-radius: 22px;
-            padding: 1rem 1.1rem;
-            margin-bottom: 1rem;
+            background: linear-gradient(120deg, rgba(67,56,202,0.08), rgba(217,119,6,0.06));
+            border: 1px solid var(--line); border-radius: 22px; padding: 1.1rem 1.2rem;
+            margin-bottom: 1rem; position: relative; overflow: hidden;
         }
-        .hero-bar h1 {
-            margin: 0;
-            font-size: clamp(1.8rem, 2vw, 2.5rem);
-            font-weight: 800;
-            letter-spacing: -0.04em;
-            color: #111827;
-        }
-        .hero-bar p {
-            margin: 0.5rem 0 0;
-            color: #475569;
-            font-size: 0.98rem;
-        }
-        .chip-row {
-            display: flex;
-            gap: 0.55rem;
-            flex-wrap: wrap;
-            margin-top: 0.85rem;
-        }
+        .hero-bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: linear-gradient(180deg, var(--primary), var(--accent)); }
+        .hero-bar h1 { margin: 0; font-size: clamp(1.5rem, 2.4vw, 2.3rem); font-weight: 900; letter-spacing: -0.02em; color: var(--ink); unicode-bidi: plaintext; }
+        .hero-bar p { margin: 0.5rem 0 0; color: var(--ink-soft); font-size: 0.98rem; unicode-bidi: plaintext; }
+        .chip-row { display: flex; gap: 0.55rem; flex-wrap: wrap; margin-top: 0.9rem; }
         .chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            background: rgba(15, 23, 42, 0.04);
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            border-radius: 999px;
-            padding: 0.42rem 0.8rem;
-            color: #334155;
-            font-size: 0.74rem;
-            font-weight: 700;
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            background: rgba(15, 18, 34, 0.035); border: 1px solid var(--line); border-radius: 999px;
+            padding: 0.42rem 0.85rem; color: var(--ink-soft); font-size: 0.74rem; font-weight: 700;
+            transition: all 0.15s ease;
         }
+        .chip:hover { background: rgba(67,56,202,0.07); border-color: rgba(67,56,202,0.22); }
+
         .metric-card {
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            border-radius: 18px;
-            padding: 0.9rem 1rem;
-            min-height: 112px;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
+            background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
+            padding: 1rem 1.1rem; min-height: 104px; box-shadow: var(--shadow-card);
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
         }
-        .metric-card .small-muted {
-            color: #64748b;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-weight: 700;
-        }
-        .metric-card h2 {
-            margin: 0.4rem 0 0;
-            font-size: 1.8rem;
-            color: #0f172a;
-            font-weight: 800;
-        }
+        .metric-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
+        .metric-card .small-muted { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; }
+        .metric-card h2 { margin: 0.4rem 0 0; font-size: 1.7rem; color: var(--ink); font-weight: 900; unicode-bidi: plaintext; }
+
         .chat-shell {
-            background: rgba(255, 255, 255, 0.86);
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            border-radius: 26px;
-            box-shadow: 0 18px 42px rgba(148, 163, 184, 0.1);
-            overflow: hidden;
+            background: var(--surface); backdrop-filter: blur(14px); border: 1px solid var(--line);
+            border-radius: 26px; box-shadow: var(--shadow-soft); overflow: hidden; animation: fadeSlideIn 0.55s ease;
         }
         .chat-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem 1.2rem;
-            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-            background: rgba(248, 250, 252, 0.8);
+            display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.3rem;
+            border-bottom: 1px solid var(--line); background: linear-gradient(90deg, rgba(67,56,202,0.05), transparent);
         }
-        .chat-header .title {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #0f172a;
-        }
-        .assistant-panel {
-            padding: 1rem 1rem 0.5rem;
-            min-height: 140px;
-            background: linear-gradient(180deg, rgba(255,255,255,0.7), rgba(248,250,252,0.8));
-        }
-        .assistant-panel .stChatMessage {
-            margin-bottom: 0.3rem;
-        }
+        .chat-header .title { font-size: 0.98rem; font-weight: 800; color: var(--ink); }
+        .assistant-panel { padding: 1.1rem 1.1rem 0.5rem; min-height: 140px; }
+        .assistant-panel .stChatMessage { margin-bottom: 0.3rem; }
         .message-bubble {
-            max-width: 85%;
-            border-radius: 1.2rem;
-            padding: 0.9rem 1rem;
-            line-height: 1.6;
-            margin: 0.4rem 0;
-            box-shadow: 0 4px 18px rgba(15, 23, 42, 0.04);
+            max-width: 88%; border-radius: 1.3rem; padding: 1rem 1.15rem; line-height: 1.75;
+            margin: 0.45rem 0; box-shadow: var(--shadow-card); unicode-bidi: plaintext;
+            animation: fadeSlideIn 0.3s ease; font-size: 0.96rem;
         }
-        .user-msg {
-            background: linear-gradient(135deg, #dbeafe, #e2e8f0);
-            color: #0f172a;
-            margin-left: auto;
-            border-bottom-right-radius: 0.45rem;
-        }
-        .assistant-msg {
-            background: #ffffff;
-            border: 1px solid rgba(148, 163, 184, 0.16);
-            color: #0f172a;
-            margin-right: auto;
-            border-bottom-left-radius: 0.45rem;
-        }
-        .composer {
-            border-top: 1px solid rgba(148, 163, 184, 0.14);
-            background: rgba(255,255,255,0.96);
-            padding: 1rem 1rem 1.1rem;
-        }
-        .quick-grid {
-            display: flex;
-            gap: 0.6rem;
-            flex-wrap: wrap;
-            margin-bottom: 0.8rem;
-        }
-        .quick-chip {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            background: #f8fafc;
-            border-radius: 999px;
-            color: #334155;
-            font-size: 0.75rem;
-            padding: 0.5rem 0.8rem;
-            font-weight: 600;
-        }
+        .user-msg { background: linear-gradient(135deg, var(--primary-2), var(--primary)); color: #fff; margin-right: auto; margin-left: 0; border-bottom-left-radius: 0.4rem; }
+        .assistant-msg { background: var(--surface-solid); border: 1px solid var(--line); color: var(--ink); margin-left: auto; margin-right: 0; border-bottom-right-radius: 0.4rem; }
+        .composer { border-top: 1px solid var(--line); background: rgba(255,255,255,0.85); padding: 1rem 1.1rem 1.15rem; }
+        .quick-grid { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+        .quick-chip { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: #f8f9fd; border-radius: 999px; color: var(--ink-soft); font-size: 0.76rem; padding: 0.5rem 0.85rem; font-weight: 700; }
+
         .result-card {
-            background: rgba(255,255,255,0.96);
-            border: 1px solid rgba(148, 163, 184, 0.16);
-            border-radius: 18px;
-            padding: 1rem 1.1rem;
-            margin-top: 0.5rem;
-            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.04);
+            background: var(--surface-solid); border: 1px solid var(--line); border-radius: var(--radius-md);
+            padding: 1.05rem 1.15rem; margin-top: 0.6rem; box-shadow: var(--shadow-card);
+            border-right: 3px solid var(--primary); unicode-bidi: plaintext; transition: transform 0.15s ease;
         }
-        .badge {
-            display: inline-block;
-            background: rgba(59,130,246,0.08);
-            color: #1d4ed8;
-            border: 1px solid rgba(59,130,246,0.18);
-            border-radius: 999px;
-            padding: 0.28rem 0.72rem;
-            font-size: 0.72rem;
-            font-weight: 700;
-        }
-        .result-card h3 {
-            margin: 0.5rem 0 0.35rem;
-            color: #0f172a;
-            font-size: 1.1rem;
-        }
-        .result-card p {
-            margin: 0.2rem 0 0;
-            color: #475569;
-            line-height: 1.6;
-        }
-        .small-muted {
-            color: #64748b;
-            font-size: 0.82rem;
-        }
-        .panel-box {
-            background: rgba(255,255,255,0.9);
-            border: 1px solid rgba(148,163,184,0.18);
-            border-radius: 18px;
-            padding: 1rem 1.1rem;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
-        }
+        .result-card:hover { transform: translateX(-2px); }
+        .badge { display: inline-block; background: rgba(67,56,202,0.08); color: var(--primary); border: 1px solid rgba(67,56,202,0.22); border-radius: 999px; padding: 0.3rem 0.78rem; font-size: 0.72rem; font-weight: 800; }
+        .result-card h3 { margin: 0.55rem 0 0.35rem; color: var(--ink); font-size: 1.08rem; font-weight: 800; unicode-bidi: plaintext; }
+        .result-card p { margin: 0.2rem 0 0; color: var(--ink-soft); line-height: 1.7; unicode-bidi: plaintext; }
+        .small-muted { color: var(--muted); font-size: 0.82rem; }
+        .panel-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 1.05rem 1.15rem; box-shadow: var(--shadow-card); }
+        .panel-box h3 { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 800; color: var(--ink); }
+
         .stButton > button {
-            background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-weight: 700;
-            padding: 0.7rem 1rem;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-2) 100%);
+            color: white; border: none; border-radius: var(--radius-sm); font-weight: 800; padding: 0.75rem 1.1rem;
+            box-shadow: 0 8px 22px rgba(76, 29, 149, 0.22); transition: all 0.15s ease;
         }
-        .stButton > button:hover {
-            filter: brightness(1.04);
+        .stButton > button:hover { filter: brightness(1.07); transform: translateY(-1px); box-shadow: 0 12px 28px rgba(76, 29, 149, 0.3); }
+        .stButton > button:active { transform: translateY(0); }
+
+        .stTextInput > div > div > input, .stTextArea > div > div > textarea, .stSelectbox > div > div,
+        .stNumberInput > div > div, [data-baseweb="select"] > div, [data-baseweb="textarea"] > div {
+            background: #ffffff !important; color: var(--ink) !important; border: 1px solid var(--line) !important;
+            border-radius: var(--radius-sm); box-shadow: none !important; transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-        .stTextInput > div > div > input,
-        .stTextArea > div > div > textarea,
-        .stSelectbox > div > div,
-        .stNumberInput > div > div,
-        [data-baseweb="select"] > div,
-        [data-baseweb="textarea"] > div {
-            background: #ffffff !important;
-            color: #0f172a !important;
-            border: 1px solid rgba(148, 163, 184, 0.3) !important;
-            border-radius: 14px;
-            box-shadow: none !important;
+        .stTextInput > div > div > input:focus, .stTextArea > div > div > textarea:focus {
+            border-color: var(--primary) !important; box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.12) !important;
         }
-        .stTextInput label,
-        .stTextArea label,
-        .stSelectbox label,
-        .stNumberInput label,
-        .stSidebar .stSelectbox label,
-        .stSidebar .stTextInput label,
-        .stSidebar .stCheckbox label,
-        .stSidebar .stRadio label,
-        .stSidebar label {
-            color: #334155 !important;
+        .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label,
+        .stSidebar .stSelectbox label, .stSidebar .stTextInput label,
+        .stSidebar .stCheckbox label, .stSidebar .stRadio label, .stSidebar label { color: var(--ink-soft) !important; font-weight: 600; }
+        .stTextInput input::placeholder, .stTextArea textarea::placeholder { color: rgba(75, 81, 112, 0.55) !important; }
+        .stSidebar .block-container { padding-top: 1.1rem; }
+
+        .stTabs [role="tablist"] { gap: 0.5rem; }
+        .stTabs [role="tab"] { background: var(--surface); border-radius: var(--radius-sm) var(--radius-sm) 0 0; border: 1px solid var(--line); color: var(--ink-soft); font-weight: 700; }
+        .stTabs [role="tab"][aria-selected="true"] { background: rgba(67,56,202,0.08); border-color: rgba(67,56,202,0.22); color: var(--ink); }
+        .stAlert { background: rgba(238, 242, 255, 0.9); border: 1px solid rgba(99, 102, 241, 0.28); color: var(--ink); border-radius: var(--radius-sm); }
+        .stProgress > div > div { background: linear-gradient(90deg, var(--primary), var(--accent)) !important; border-radius: 999px; }
+
+        @media (max-width: 768px) {
+            [data-testid="block-container"] { padding-top: 0.8rem; padding-left: 0.6rem; padding-right: 0.6rem; }
+            .top-shell { border-radius: 20px; padding: 0.9rem 1rem 0.2rem; }
+            .brand { font-size: 1.08rem; gap: 0.6rem; }
+            .brand-badge { width: 2.2rem; height: 2.2rem; font-size: 1rem; border-radius: 0.7rem; }
+            .hero-bar h1 { font-size: 1.35rem; }
+            .hero-bar p { font-size: 0.88rem; }
+            .chip { font-size: 0.68rem; padding: 0.35rem 0.65rem; }
+            .metric-card { min-height: 84px; padding: 0.8rem 0.9rem; }
+            .metric-card h2 { font-size: 1.4rem; }
+            .message-bubble { max-width: 96%; padding: 0.85rem 1rem; font-size: 0.92rem; }
+            .chat-header { padding: 0.85rem 1rem; }
+            .composer { padding: 0.85rem 0.9rem 1rem; }
+            .stButton > button { width: 100%; padding: 0.85rem 1rem; }
+            .quick-chip { font-size: 0.72rem; padding: 0.45rem 0.7rem; }
         }
-        .stTextInput input::placeholder,
-        .stTextArea textarea::placeholder {
-            color: rgba(71, 85, 105, 0.7) !important;
-        }
-        .stSidebar .block-container {
-            padding-top: 1rem;
-        }
-        .stTabs [role="tablist"] {
-            gap: 0.5rem;
-        }
-        .stTabs [role="tab"] {
-            background: rgba(255,255,255,0.9);
-            border-radius: 12px 12px 0 0;
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            color: #334155;
-            font-weight: 600;
-        }
-        .stTabs [role="tab"][aria-selected="true"] {
-            background: rgba(59,130,246,0.08);
-            border-color: rgba(96,165,250,0.18);
-            color: #0f172a;
-        }
-        .stAlert {
-            background: rgba(239, 246, 255, 0.9);
-            border: 1px solid rgba(147, 197, 253, 0.4);
-            color: #0f172a;
+        @media (max-width: 480px) {
+            .hero-bar h1 { font-size: 1.15rem; }
+            .status-pill { font-size: 0.66rem; padding: 0.32rem 0.65rem; }
         }
         </style>
         """,
@@ -1393,7 +1323,7 @@ def main() -> None:
 
                 if not result_payload.get("answer"):
                     fallback_text = (
-                        "لم أجد إجابة مولدة عبر الـ provider المختار. تم إرجاع أقرب أدلة قانونية من الاسترجاع المحلي فقط. "
+                        "لم أجد إجابة مولدة عبر مزوّد النموذج المختار. تم إرجاع أقرب أدلة قانونية من الاسترجاع المحلي فقط. "
                         f"أقرب دليل: {results[0].get('content', '') if results else 'لا توجد نتائج.'}"
                     )
                     result_payload = {
