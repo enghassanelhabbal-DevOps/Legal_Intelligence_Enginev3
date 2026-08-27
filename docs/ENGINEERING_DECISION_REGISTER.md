@@ -99,3 +99,54 @@ Status: accepted.
 Decision: Accuracy, latency, memory, throughput, cost, and reliability claims require reproducible reports.
 
 Consequence: benchmark artifacts and experiment manifests become part of release evidence.
+
+## DR-013 — Canonicalize Gemini generation backend
+
+Status: accepted.
+
+Decision: Gemini is a named remote LLM provider in the current production path and must be represented by a canonical `GeminiBackend` under `src/legal_ai/generation/backends/`, conforming to the shared generation adapter contract.
+
+Current state: provider-specific Gemini behavior currently exists in root `app.py`, including model-variant fallback and bounded retry behavior. This is treated as technical debt and a second generation implementation, analogous to the previously identified retrieval duplication.
+
+Migration rule:
+
+```text
+inventory current Gemini behavior
+→ define adapter parity contract
+→ implement GeminiBackend
+→ add parity/failure/resource tests
+→ route QueryService/GenerationManager through canonical backend
+→ verify supported behavior and metrics
+→ remove vendored Gemini implementation from app.py
+→ repository-wide search confirms one active Gemini implementation
+```
+
+Provider/data-boundary policy: Gemini is an external trust boundary. The system must make the selected provider explicit and must not send data classified as disallowed for that provider. Provider credentials and sensitive payloads must not appear in logs, fixtures, or committed files.
+
+Consequence: Gemini provider changes belong to the generation layer and its configuration; retrieval, evidence, API, and UI must remain provider-agnostic.
+
+## DR-014 — Root app.py is not a permanent business-logic boundary
+
+Status: accepted.
+
+Decision: Deployment convenience, including single-process Streamlit hosting constraints, does not justify active duplicate retrieval or generation business logic in root `app.py`.
+
+Decision rule: Any new capability first added to `app.py` for deployment convenience is presumptively a duplication violation unless it is presentation/transport-only or has an explicit, versioned migration path into the canonical `src/legal_ai` layer.
+
+Consequence: Stage 3 must remove retrieval and generation duplication and preserve only thin entrypoint behavior where necessary.
+
+## DR-015 — Stage 4 owns the full production retrieval benchmark
+
+Status: accepted.
+
+Decision: The reproducible benchmark for the exact dense + lexical + reranker production retrieval path is a Stage 4 deliverable and the gate for later retrieval optimization claims.
+
+Consequence: no full-stack retrieval optimization claim may rely only on the current BM25 smoke gate or the unverified historical 0.835 figure.
+
+## DR-016 — Security controls are staged by risk
+
+Status: accepted.
+
+Decision: Security controls are implemented according to execution risk and product maturity rather than as one undifferentiated enterprise backlog.
+
+Consequence: baseline secrets/data/file/prompt boundaries begin in early stages; tenant isolation, data residency, and enterprise governance are introduced when the commercial platform requires them.
