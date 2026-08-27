@@ -17,6 +17,9 @@ htmlcov/
 .env.*
 !.env.example
 
+# Local Streamlit secrets
+.streamlit/secrets.toml
+
 # DVC / datasets / models
 .dvc/cache/
 .dvc/tmp/
