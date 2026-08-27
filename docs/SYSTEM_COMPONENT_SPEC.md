@@ -177,17 +177,41 @@ Identifies possible version/jurisdiction/authority/text conflicts for review.
 ### GenerationAdapter
 Stable abstraction for local or remote LLMs.
 
-Backends may include:
+Canonical production/provider implementations live under `src/legal_ai/generation/backends/` and must conform to the same adapter contract.
 
-- local Transformers;
+Supported or planned backends are:
+
+- local Transformers backends;
+- **Gemini** through a canonical `GeminiBackend`;
 - OpenAI-compatible APIs;
 - Ollama;
 - vLLM;
-- future providers.
+- future providers that satisfy the same contract.
 
-The backend must not know how retrieval works internally.
+### Gemini provider requirements
+
+Gemini is treated as a named remote provider because it is part of the current production path. Its provider-specific behavior must be encapsulated in `generation/backends/` rather than root/UI code.
+
+The canonical Gemini implementation must preserve, through tests and measured parity where applicable, the production behaviors currently depended upon by the system, including:
+
+- bounded retries;
+- retry/backoff handling for transient provider failures;
+- model-variant fallback ordering;
+- safe timeout handling;
+- provider response normalization;
+- structured error mapping;
+- no credential leakage in logs or responses.
+
+Provider-specific tuning (for example model IDs or provider request parameters) belongs in configuration/adapter code, not in retrieval, evidence, API, or UI modules.
+
+### Remote-provider data boundary
+
+A remote LLM provider is a trust boundary. The generation layer must make the selected provider explicit to telemetry and policy enforcement.
+
+Before sending a request to a remote provider, the system must apply the configured data-boundary policy and must not silently transmit data classified as disallowed for that provider.
 
 ### AnswerValidator
+
 Rejects malformed, unsupported, or untraceable outputs.
 
 ## 8. Runtime components
@@ -229,6 +253,7 @@ API → ranking algorithms
 Generation → retrieval implementation
 Retrieval → provider-specific LLM logic
 Runtime backend → duplicated resource policy
+Root deployment entrypoint → vendored retrieval/generation business logic
 ```
 
 Allowed:
@@ -239,7 +264,10 @@ services → stable interfaces
 retrieval → core contracts
 knowledge → core contracts
 engineering/evaluation → stable interfaces and artifacts
+generation → provider adapters through the canonical interface
 ```
+
+The Streamlit deployment constraint does not justify duplicating retrieval or generation behavior. Embedded mode must still invoke the canonical `QueryService` and backend adapters in-process.
 
 ## 11. Caching
 
@@ -251,12 +279,13 @@ Cache keys should include relevant identity such as:
 knowledge_release
 query normalization version
 retriever version
-model version
+reranker version
+model/backend version
 execution policy
 request scope/tenant where applicable
 ```
 
-Never allow stale cache entries to silently substitute a different legal version.
+Never allow stale cache entries to silently substitute a different legal version or provider policy.
 
 ## 12. Concurrency
 
@@ -265,6 +294,8 @@ Concurrency is bounded at service/runtime level. Components must not independent
 ## 13. Error contract
 
 Errors should be typed by category and carry safe contextual metadata. API layers translate internal errors into stable external responses.
+
+Provider errors must preserve enough classification to distinguish transient failures, rate limits, timeouts, authentication/configuration errors, malformed responses, and permanent unsupported-model errors without exposing secrets.
 
 ## 14. Versioning
 
@@ -279,3 +310,18 @@ When an interface changes incompatibly:
 ## 15. Testability
 
 Each component should support deterministic tests with injected dependencies. Model-heavy behavior must have lightweight mocks/fakes for unit tests and real benchmark paths for integration validation.
+
+## 16. Provider migration rule
+
+When a provider currently implemented outside the canonical generation layer is migrated:
+
+1. inventory current production behavior;
+2. define canonical adapter contract;
+3. implement provider backend;
+4. add behavior/parity tests;
+5. route the canonical service through the adapter;
+6. validate metrics/resource/failure behavior;
+7. remove the old implementation;
+8. search the repository to confirm no active duplicate remains.
+
+No provider migration is complete while two independently active implementations can serve production answers.
