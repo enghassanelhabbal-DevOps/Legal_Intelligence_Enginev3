@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-Status: approved working execution plan candidate for `feat/enterprise-foundation`.
+Status: working execution plan synchronized with `ARCHITECTURE_CONTRACT_V4_RECONCILED_DRAFT.md`.
 
 This plan is subordinate to `ARCHITECTURE_CONTRACT.md` until V4 is explicitly promoted. It must remain stage-for-stage consistent with the architecture contract. If the two disagree, stop and reconcile before implementation.
 
@@ -303,7 +303,7 @@ Ordinary legal updates should use versioned knowledge releases, not routine base
 Security controls are staged, not deferred wholesale:
 
 - Stage 0–1: secrets hygiene, schema validation, safe file handling, provenance/license checks, basic size/type limits, benchmark-data isolation.
-- Stage 2–3: bounded retries/queues, prompt-injection boundary, structured error handling, safe remote-provider configuration, no credential leakage.
+- Stage 2–3: bounded retries/queues, prompt-injection boundary, structured error handling, approved remote-provider configuration, provider data-boundary records, no credential leakage.
 - Stage 4–6: citation/evidence integrity, abuse-resistant benchmark endpoints, rate limiting where exposed.
 - Stage 7–9: authentication/authorization boundaries for product workflows, audit events for important legal operations.
 - Stage 10: cross-jurisdiction isolation and pack-level data controls.
