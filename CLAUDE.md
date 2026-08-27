@@ -63,11 +63,13 @@ Canonical code areas:
 - `src/legal_ai/retrieval/`: dense, lexical, hybrid fusion, metadata/temporal filtering.
 - `src/legal_ai/reranking/`: reranking and scoring.
 - `src/legal_ai/evidence/`: evidence selection, context construction, citation validation.
-- `src/legal_ai/generation/`: LLM interfaces and backend adapters.
+- `src/legal_ai/generation/`: LLM interfaces and provider adapters, including canonical providers such as Qwen, OpenAI-compatible endpoints, and Gemini.
 - `src/legal_ai/evaluation/`: metrics, datasets, benchmarks, regression gates.
 - `src/legal_ai/services/`: orchestration only.
 - `api/`: HTTP concerns only.
 - `ui/`: presentation concerns only.
+
+`app.py` is not a permanent business-logic boundary. Any capability implemented there for deployment convenience is presumptively a duplicate-implementation violation and must have an explicit migration path back to the canonical `src/legal_ai` layers. In particular, root-level retrieval logic and vendored Gemini generation are tracked Stage 3 consolidation work.
 
 ## Evaluation is first-class
 
@@ -85,14 +87,21 @@ Evaluate these dimensions independently:
 10. Reliability: failure rate, recovery success, degraded-mode success.
 11. Efficiency: CPU, RAM, VRAM, latency, throughput, token use, estimated cost.
 
-Protected retrieval regression baseline:
+### Retrieval baseline governance
+
+Historical baseline (UNVERIFIED — see DR-004):
+
 - MRR: 0.835
 - Recall@1: 0.75
 - Recall@3: 0.90
 - Recall@5: 0.95
 - Recall@10: 1.00
 
-These are regression targets, not product-quality claims. The current smoke evaluation is derived from the source corpus and therefore must not be used as the final benchmark for real-user legal understanding.
+These values are historical references only. They are not a CI gate and must not be reported as current measured production performance unless a reproducible harness and artifact lineage establish them again.
+
+The currently enforced regression guard is the BM25 self-retrieval smoke baseline in the versioned benchmark artifact/CI configuration. It is a regression guard only and is not evidence of legal understanding.
+
+Before production retrieval optimization is claimed, Stage 4 must establish a reproducible full-pipeline benchmark covering the serving path: Dense BGE-M3 + BM25 + candidate union/filtering + reranker + evidence selection.
 
 ## Dataset policy
 
@@ -157,6 +166,8 @@ Treat documents, queries, retrieved text, model outputs, and external connectors
 Required controls include validation, safe file handling, secrets hygiene, prompt-injection defense, source sanitization, rate limiting, structured audit events, and explicit authorization boundaries.
 
 Retrieved legal text must never override system/developer instructions.
+
+Remote providers are an explicit data boundary. Any provider integration must declare whether query/evidence content leaves the deployment boundary, what data classes are permitted, and what redaction or approval policy applies. Gemini is currently a production provider but remains a Stage 3 canonicalization item until its vendored root implementation is migrated into `src/legal_ai/generation/` and parity-tested.
 
 The product must clearly distinguish retrieved law, model interpretation, uncertainty, and missing evidence. It must not present unsupported legal assertions as authoritative fact.
 
