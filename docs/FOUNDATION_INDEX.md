@@ -1,7 +1,7 @@
 # Legal Intelligence Engine — Foundation Documentation Index
 
-> Status: Working foundation set for `feat/enterprise-foundation`.
-> The authoritative architecture remains `ARCHITECTURE_CONTRACT.md` until V4 is explicitly promoted.
+> Status: Authoritative foundation set for `feat/enterprise-foundation`.
+> `ARCHITECTURE_CONTRACT.md` is the authoritative architecture contract (V4), approved after adversarial review and full-system verification.
 > These documents define implementation guidance, evaluation policy, data governance, reliability, product scope, and stage execution.
 
 ## Purpose
@@ -10,18 +10,18 @@ This directory is the operating system for building the Legal Intelligence Engin
 
 ## Document hierarchy
 
-1. `ARCHITECTURE_CONTRACT.md` — authoritative technical contract after approval.
+1. `ARCHITECTURE_CONTRACT.md` — authoritative technical contract.
 2. `CLAUDE.md` — implementation/review instructions for Claude Code and coding agents.
-3. `ARCHITECTURE_CONTRACT_V4_RECONCILED_DRAFT.md` — proposed contract awaiting final approval.
-4. `PRODUCT_REQUIREMENTS.md` — product scope, users, workflows, acceptance criteria, and non-goals.
-5. `LEGAL_DOMAIN_SPEC.md` — legal semantics, jurisdictions, temporal law, authority, and answer behavior.
-6. `DATA_GOVERNANCE.md` — dataset intake, provenance, licensing, quality, leakage, and release policy.
-7. `EVALUATION_SYSTEM_SPEC.md` — evaluation tracks, benchmarks, datasets, metrics, and quality gates.
-8. `RESOURCE_RELIABILITY_SPEC.md` — resource budgets, adaptive execution, fault handling, and failure learning.
-9. `SECURITY_PRIVACY_SPEC.md` — threat model, trust boundaries, secrets, data isolation, and abuse resistance.
+3. `PRODUCT_REQUIREMENTS.md` — product scope, users, workflows, acceptance criteria, and non-goals.
+4. `LEGAL_DOMAIN_SPEC.md` — legal semantics, jurisdictions, temporal law, authority, and answer behavior.
+5. `DATA_GOVERNANCE.md` — dataset intake, provenance, licensing, quality, leakage, and release policy.
+6. `EVALUATION_SYSTEM_SPEC.md` — evaluation tracks, benchmarks, datasets, metrics, and quality gates.
+7. `RESOURCE_RELIABILITY_SPEC.md` — resource budgets, adaptive execution, fault handling, and failure learning.
+8. `SECURITY_PRIVACY_SPEC.md` — threat model, trust boundaries, secrets, data isolation, and abuse resistance.
+9. `SYSTEM_COMPONENT_SPEC.md` — component responsibilities, interfaces, provider boundaries, and dependency rules.
 10. `DELIVERY_STAGE_PLAN.md` — staged implementation plan and definition of done.
 11. `ENGINEERING_DECISION_REGISTER.md` — durable decisions and their rationale.
-12. Existing runbooks and reviews — deployment and implementation details.
+12. Existing runbooks, reviews, and promotion artifacts — deployment and implementation details.
 
 ## Current truth vs target truth
 
@@ -43,7 +43,8 @@ Requirement
   -> Benchmark
   -> Resource measurement
   -> Claude adversarial review
-  -> Fix findings
+  -> Human/project-owner decision
+  -> Authorized fix
   -> Re-test
   -> Decision record
   -> Release
@@ -65,7 +66,7 @@ Create a trustworthy evaluation and data foundation before training/fine-tuning 
 
 The historical `MRR=0.835` hybrid figure is treated as an **unverified historical reference** unless a reproducible harness is restored. The CI smoke baseline is useful as a regression guard but is not proof of legal understanding. The full dense+BM25+reranker pipeline must receive its own reproducible benchmark before its quality is claimed.
 
-## Review ownership
+## Review model
 
 - Architecture and product intent: project owner + architecture review.
 - Implementation and adversarial code review: Claude Code.
