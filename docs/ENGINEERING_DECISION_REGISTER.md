@@ -150,3 +150,100 @@ Status: accepted.
 Decision: Security controls are implemented according to execution risk and product maturity rather than as one undifferentiated enterprise backlog.
 
 Consequence: baseline secrets/data/file/prompt boundaries begin in early stages; tenant isolation, data residency, and enterprise governance are introduced when the commercial platform requires them.
+
+## DR-017 — Default leakage-grouping key is law_id, exact-match overlap checks are schema-explicit
+
+Status: accepted.
+
+Decision: The Stage 1 dataset intake system (`src/legal_ai/evaluation/leakage.py`) groups records for split-safety using the first present field from `[law_id, document_id, source_id, case_id, question_group]`, defaulting to `law_id` for the current corpus since every record carries it. This is a leakage-safety grouping key, not a split-quality guarantee: profiling the real 952-article corpus showed only 2 distinct `law_id` values, so grouping the raw corpus itself by `law_id` produces a degenerate (all-or-nothing) split. Splitting must be applied to *evaluation query sets* derived from the corpus (grouped by which law/article they reference), not to the raw corpus text itself.
+
+Cross-dataset overlap checks (`check_overlap`/`enforce_no_overlap`) require the caller to state which field holds text/id in the *candidate* dataset when it differs from the protected dataset's schema (e.g. an eval-query set's `query`/`relevant_document_ids` vs a corpus's `raw_text`/`document_id`). A check across mismatched field names that finds nothing must be reported as `is_meaningful=False`, not as a passing "clean" result — this was a real defect caught during Stage 1 implementation (an unmapped leakage check against `data/evaluation/eval_queries.json` silently reported 0 overlaps because it was comparing fields that don't exist in that file's schema) and is now a CI-failing condition by default in `enforce_no_overlap`.
+
+Consequence: Stage 2+ work adding a second dataset must supply an explicit grouping-field list and candidate-field mapping rather than relying on defaults tuned for the current single-jurisdiction, two-law corpus; and any future overlap/leakage check must set or verify `is_meaningful` before trusting a "clean" result.
+
+## DR-018 — Penal Code article_id gap: accepted as debt with a concrete recovery path, not a passive deferral
+
+Status: accepted.
+
+Decision: All 468 `قانون العقوبات` (Penal Code) records in `legal_documents.json` have an empty `article_id`, while all 484 `قانون الإجراءات الجنائية` (Criminal Procedures) records have it populated. Automated recovery from the existing corpus was attempted and confirmed impossible: the article number is not recoverable from `raw_text`, `normalized_text`, `embedding_text`, `source`, or `version_id` — none of these fields carry it independently (`embedding_text` was itself generated from the empty `article_id`, so it is not an independent source).
+
+Rather than a binary accept-or-fix choice, the resolution is: accept the current gap as known debt (no re-scrape of the original legal source is in scope now), **and** create a concrete, already-planned recovery path: `docs/research/DATASET_ASSESSMENT_DATAFLARE_EGYPT_LEGAL_CORPUS.md`'s Experiment E (overlap analysis against the existing 952 corpus) must include cross-referencing Penal Code text against Dataflare's Penal Code records once ingested, since Dataflare's raw text is expected to retain in-line "المادة N" markers (`src/legal_ai/ingestion/article_segmentation.py`) that this corpus's ingestion pipeline apparently discarded for this one law. If that cross-reference succeeds, article_id can be backfilled with `provenance: "cross_reference_derived"`, never silently presented as original.
+
+Consequence: Experiment E's required outputs now explicitly include an article_id backfill assessment for the Penal Code subset, not just a general overlap report.
+
+## DR-019 — Deferred manifest fields confirmed acceptable, tied to Dataflare intake rather than left open-ended
+
+Status: accepted.
+
+Decision: The fields deferred in Stage 1 (`legal_systems`/`authority_types` taxonomy, `date_coverage`, semantic near-duplicate detection, full L1–L10 evaluator) remain deferred, but not indefinitely and not unmotivated: Dataflare's `categories` field gives the first real signal to populate `authority_types`/`legal_systems` meaningfully once ingested, and the hierarchical structure work required for H1/H2 (`docs/research/RESEARCH_HYPOTHESES.md`) will produce article-level granularity that a semantic near-duplicate detector can be built against later without redesigning the profiler.
+
+Consequence: these fields are re-evaluated at first real Dataflare ingestion, not at an unscheduled future date; `DatasetManifest`'s existing `unknown` sentinel already accommodates them without schema changes.
+
+## DR-020 — Suspected extraction-noise in Dataflare text is flagged, not silently stripped
+
+Status: accepted.
+
+Decision: A 10-row real sample fetched from the Dataflare public viewer (see `docs/research/DATASET_ASSESSMENT_DATAFLARE_EGYPT_LEGAL_CORPUS.md`, "Real sample findings") showed multiple unrelated records opening with a short meaningless token + small number (e.g. `"دودو 10 قانون..."`) before real legal content, consistent with an OCR/extraction artifact. A detector (`src/legal_ai/ingestion/text_quality_diagnostics.py`) was built and tested against the exact observed strings, but per the "do not guess, do not silently fix data" governance rule, it only flags suspected noise for manifest/report visibility — it does not strip or alter text. No cleaning rule is adopted yet: a 10-row sample (~0.4% of the corpus) is not sufficient to establish the pattern's true prevalence, false-positive rate, or correct removal boundary.
+
+Consequence: `scan_corpus_for_noise_prefix` must be run against the full corpus at first real ingestion, and its prevalence/false-positive findings must be reviewed before any text-cleaning transformation is added to the ingestion pipeline. Until then, `article_segmentation.py`'s existing design (unmatched text before the first `المادة` marker is captured separately, never treated as article content) already provides a safe fallback — noise prefixes do not corrupt article boundary detection even before a dedicated cleaning rule exists.
+
+## DR-021 — Dataflare corpus is 86.7% case law by record count; taxonomy and grouping strategy revised accordingly
+
+Status: accepted.
+
+Decision: Full-corpus analysis of the real parquet file (2,434 records, confirmed via direct download) found 2,110 records (86.7%) are Court of Cassation (نقض) case-ruling excerpts, not statute text, identified by the citation pattern `"الطعن رقم N لسنة Y مكتب فنى O"`. `law_name` is overloaded: for statutes it is the law's title; for case rulings it is a legal-doctrine/topic label shared across many unrelated rulings (e.g. `"المنع من سماع الدعوى"` appears against 5 distinct, unrelated cases). Using `law_name` as the leakage-safety grouping key (DR-017's default) for case-ruling records would therefore incorrectly group unrelated cases sharing a topic label into one leakage-safety cluster.
+
+Consequence: the case-citation key (`case_citation_extraction.citation_key()` — appeal number + year + technical office) must be used as the grouping key for case-ruling records during Dataflare ingestion; `law_name`/`law_id` remains correct only for the statute-like 13.3% subset. `src/legal_ai/evaluation/leakage.py`'s `group_key_for` field-preference list should add citation-derived grouping for this dataset at ingestion time (tracked for the actual ingestion implementation, not done in this exploratory pass). This is a positive product finding, not a downgrade: case-ruling excerpts with clean citation extraction (94.8% coverage, measured) are exactly the citable evidence units the groundedness goal (H4) needs.
+
+## DR-022 — Article-boundary segmenter rebuilt after 99.7% real-data miss rate; root cause was a synthetic-fixture assumption
+
+Status: accepted.
+
+Decision: `article_segmentation.py` was originally built and unit-tested only against synthetic fixtures with newline-separated articles (`"المادة 1 - ...\n\nالمادة 2 - ..."`). Run against the real corpus, it found zero markers in 323 of 324 statute-like records (99.7% miss). Root cause: real Dataflare statute text is a single continuous flattened paragraph with no internal newlines at all, and the segmenter's marker pattern required a line-start anchor. Fixed by matching the marker anywhere in text, with an exclusion for referential mentions (`"طبقا للمادة 5"`) so a reference to an article is not double-counted as a second boundary. Post-fix miss rate: 17.2% (56 of 326), and inspection confirmed these are not remaining bugs — they are genuinely structure-less content (lawsuit petition templates, legal notice forms, explanatory prose) that correctly has no article markers.
+
+Consequence: any future ingestion module built and tested only against synthetic/hand-written fixtures must be validated against a real sample of the target corpus before being treated as ready — this specific failure mode (works on synthetic fixtures, fails almost completely on the real distribution) is now a named risk pattern for this project, not a one-off bug.
+
+## DR-023 — DR-018's Dataflare cross-reference recovery path for the Penal Code article_id gap is revised, not retracted
+
+Status: accepted (supersedes the optimistic framing in DR-018, not the underlying decision to accept the gap as debt).
+
+Decision: Full-corpus analysis found Dataflare's only Penal-Code-titled record is `"نموذج كــود قانون العقوبات"` ("Model Code draft of the Penal Code") — not confirmed identical in content or legal authority to the production Penal Code already in `legal_documents.json`, and zero exact-text overlap was found between the two datasets (expected, since Dataflare stores each law as one giant record vs. one-record-per-article in the existing corpus — exact matching cannot find overlap across that granularity difference regardless of content similarity). DR-018's proposed recovery path (cross-reference Dataflare text to backfill `article_id`) therefore requires, before it can be attempted: (a) article-level segmentation of the Dataflare "Model Code" entry via `article_segmentation.py`, (b) fuzzy/substring matching at the segment level rather than exact full-text matching, and (c) explicit verification that the "Model Code" text is legally equivalent to the production law, not just similarly named, before any backfilled `article_id` could be trusted enough to use.
+
+Consequence: the Penal Code `article_id` gap remains accepted debt with a *harder, multi-step* recovery path than DR-018 originally described, not a straightforward one. This must be reflected in Stage 2+ planning effort estimates.
+
+## DR-024 — NFC normalization is required before any hardcoded-Arabic-marker matching; three real bugs found and fixed
+
+Status: accepted.
+
+Decision: independently re-verified the correction that NFC normalization *does* resolve decomposed Arabic hamza combining marks (previously misreported as not working — the earlier test compared a hand-typed marker against another hand-typed comparison string, both potentially sharing the same typing artifact, rather than against real data). Root-caused precisely: real Dataflare `categories` text uses decomposed sequences (e.g. base+YEH+COMBINING-HAMZA-ABOVE, U+0654) where a hand-typed precomposed marker (e.g. `"نقض جنائي"`) would silently fail to match — confirmed to be the exact cause of a real bug in `document_type.py`'s classifier, which returned zero `JUDICIAL_CASSATION_CRIMINAL` results against the full real corpus despite 415 records genuinely being criminal cassation rulings.
+
+Fixed by adding `nfc_normalize()` to `ingestion/normalization.py` (NFC-only, deliberately less aggressive than the existing `normalize_arabic()` — no lowercasing/alef-merging/diacritic-stripping, so it stays safe for offset-sensitive operations) and applying it to both input text and hardcoded marker constants in `document_type.py`, `article_segmentation.py`, `case_citation_extraction.py`, and `text_quality_diagnostics.py` — all four modules had at least one marker containing a hamza-bearing letter (أ إ ؤ ئ ء) and were therefore exposed to the same silent-failure class.
+
+Consequence: any future module that matches hardcoded Arabic strings against real corpus text must apply `nfc_normalize()` first — this is now a named, tested risk pattern (regression tests built the decomposed sequences programmatically, not by hand-typing, specifically to avoid re-introducing the same class of bug via the test itself).
+
+## DR-025 — Document-type classifier: category-tag substring collision and hierarchical-tag ordering bugs found and fixed during real-corpus validation
+
+Status: accepted.
+
+Decision: building `domain/document_type.py`'s rule-based classifier against the real corpus surfaced two real bugs before either shipped:
+
+1. **Substring collision**: an early administrative-court marker (`"المحكمة الادارية"`) is a literal substring of the combined category tag `"النقض و المحكمة الادارية"` (cassation-and-administrative, a genuinely mixed bucket applied to 2,051 records), causing every combined-tag record to be wrongly classified as pure `JUDICIAL_ADMINISTRATIVE`. Fixed by narrowing the marker to Supreme-Administrative-specific tags only (`"اداريا عليا"`, `"الادارية العليا"`) that do not collide with the combined tag.
+2. **Ordering**: categories in this corpus are hierarchical — a specific sub-tag (`"نقض مدني"`, `"نقض جنائي"`, `"اداريا عليا"`) normally co-occurs *with* the broad combined parent tag on the same record (confirmed: 1293+415+343 = 2051, exactly the combined-tag count). Checking the combined tag first meant the specific sub-type check was never reached. Fixed by checking specific sub-type markers before falling back to the combined/ambiguous case.
+
+Post-fix, measured against the full real corpus: 1293 civil cassation, 415 criminal cassation, 343 administrative, 179 statute, 105 constitutional, 59 judicial-other (genuinely ambiguous), 17 unknown (0.7%), matching the independently-measured category tag counts exactly.
+
+Consequence: `docs/research/RESEARCH_HYPOTHESES.md` and future classifier work should treat "validate against real data before trusting a rule-based marker list" as a standing requirement, not a one-off step — this is the second time in this project a synthetic/assumption-based first pass silently failed at a high rate on real data (the first was DR-022's article segmenter).
+
+## DR-026 — Duplicate clustering: record_id must be excluded from metadata-variance comparison
+
+Status: accepted.
+
+Decision: `domain/duplicate_clustering.py`'s first implementation compared full per-record metadata dicts (including `record_id`) to decide whether a duplicate-text cluster was an "exact duplicate" or a "metadata variant" — since `record_id` always differs between distinct members, every multi-member cluster was wrongly flagged as a metadata variant. Fixed by comparing only the caller-specified `metadata_fields` values. Measured against the real corpus: of 347 duplicate-text clusters (696 records), only 7 are genuine metadata variants (e.g. `law_name` values `"New Microsoft Word Document"` and `"law4_arb"` appearing as variants of `"قانون البيئة"` — confirms the dataset card's own claim that `law_name` derives from source filenames); the remaining 340 are true exact duplicates safe to canonicalize.
+
+Consequence: the 7 genuine metadata-variant clusters are flagged for manual review per the master prompt's "prepare outputs for manual legal review where appropriate" requirement, not auto-resolved.
+
+## DR-027 — Citation-based grouping wired into leakage-safety splitting for judicial records (DR-021 follow-through)
+
+Status: accepted.
+
+Decision: `evaluation/leakage.py`'s `group_key_for` now checks a `citation_key` field first (via the new `enrich_with_citation_key()` helper, which runs `case_citation_extraction.extract_case_citation()` per record), falling through to `law_id` for legislative records where citation extraction is not applicable (returns `None`, not a fabricated value). Verified against the real corpus: the 5 records sharing the topic label `"المنع من سماع الدعوى"` (used in DR-021 as the motivating example) now resolve to 2 distinct group keys instead of being forced into a single group by the shared topic label alone.

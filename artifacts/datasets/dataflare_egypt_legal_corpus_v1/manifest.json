@@ -1,0 +1,191 @@
+{
+  "dataset_id": "dataflare_egypt_legal_corpus_v1",
+  "dataset_version": "v1",
+  "source": "dataflare/egypt-legal-corpus",
+  "file_path": "data/raw/dataflare/egypt-legal-corpus-train-00000-of-00001.parquet",
+  "file_sha256": "a55c349e9c95faffcdf49b66c726be7ae4ed738aafd43767d8ae99f5903d4458",
+  "schema": {
+    "columns": [
+      "law_name",
+      "categories",
+      "text",
+      "tokens"
+    ],
+    "row_shape": "flattened_single_paragraph_per_record"
+  },
+  "record_count": 2434,
+  "token_count": 25054372,
+  "license_state": "unknown",
+  "provenance_state": "dataset_derived",
+  "classifier_distribution": {
+    "note": "classifier PREDICTIONS, not verified corpus ground truth — see manual_review_manifest.json for the gold-labeling gate",
+    "classifier_version": "rule_based_v1",
+    "distribution": {
+      "constitutional_material": 105,
+      "statute": 179,
+      "judicial_other": 59,
+      "legal_form": 8,
+      "unknown": 17,
+      "international_instrument": 15,
+      "judicial_administrative": 343,
+      "judicial_cassation_criminal": 415,
+      "judicial_cassation_civil": 1293
+    },
+    "unknown_rate": 0.007
+  },
+  "category_distribution": {
+    "distinct_category_values": 171,
+    "total_category_tags": 6769,
+    "top_20": {
+      "النقض و المحكمة الادارية": 2051,
+      "نقض مدني جزء اول": 1293,
+      "نقض جنائي جزء الاول": 415,
+      "اداريا عليا جزء اول": 343,
+      "إيجار": 182,
+      "حكم": 119,
+      "القوانين والتشريعات": 113,
+      "إستئناف": 85,
+      "أحوال شخصية للمسلمين": 82,
+      "إثبات": 81,
+      "إختصاص": 71,
+      "دعوى": 71,
+      "المشرع الدستوري": 50,
+      "تعويض": 50,
+      "أحوال شخصية غير المسلمين": 49,
+      "حجز": 49,
+      "حراسة": 48,
+      "أحوال شخصية لغير المسلمين": 47,
+      "النقل البحرى": 46,
+      "اتفاقيات واعلانات دولية": 40
+    }
+  },
+  "duplicate_cluster_statistics": {
+    "total_clusters": 2085,
+    "multi_member_clusters": 347,
+    "records_in_multi_member_clusters": 696,
+    "note_on_696": "696 records participate in duplicate clusters; this is NOT 696 rows safe to delete — see metadata_variant_clusters below",
+    "metadata_variant_clusters": 7,
+    "exact_duplicate_clusters_no_metadata_variance": 340
+  },
+  "citation_extraction": {
+    "note": "COVERAGE, not accuracy — no manually labeled gold sample has validated correctness yet",
+    "case_like_records": 2110,
+    "clean_citation_extractions": 1998,
+    "coverage_ratio": 0.9469,
+    "parser_version": "regex_v1"
+  },
+  "structure_profile": {
+    "note": "parser non-detection is NOT proof legal structure is absent",
+    "statute_like_records_checked": 324,
+    "records_with_zero_markers_found": 56,
+    "zero_marker_ratio": 0.1728,
+    "parser_version": "inline_reference_filtered_v2"
+  },
+  "unicode_profile": {
+    "records_with_decomposed_combining_hamza_in_law_name": 685,
+    "records_changed_by_nfc_normalization": 691,
+    "nfc_resolves_observed_decomposed_hamza": true
+  },
+  "noise_prefix_diagnostic": {
+    "records_checked": 2434,
+    "suspected_count": 21,
+    "suspected_ratio": 0.008627773212818405,
+    "examples": [
+      {
+        "document_id": "3",
+        "is_suspected": true,
+        "matched_token": "بونو",
+        "matched_number": "048",
+        "prefix_preview": "048 بونو 1 وين 1 المواعيد والمدد القانون",
+        "reason": "text opens with a suspected extraction-noise pattern (digit_then_token) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "5",
+        "is_suspected": true,
+        "matched_token": "دودو",
+        "matched_number": "10",
+        "prefix_preview": "دودو 10 قانون الاجراءات الجنائية طبقا لا",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "6",
+        "is_suspected": true,
+        "matched_token": "دودو",
+        "matched_number": "4",
+        "prefix_preview": "دودو 4 قانون المحاماة والادارات القانوني",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "8",
+        "is_suspected": true,
+        "matched_token": "من",
+        "matched_number": "5",
+        "prefix_preview": "من 5 دودو 5 امر خروج نهائي مجموعة جاجا 4",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "9",
+        "is_suspected": true,
+        "matched_token": "دودو",
+        "matched_number": "3",
+        "prefix_preview": "دودو 3 قانون الاثبـات -/ في المواد المدن",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "128",
+        "is_suspected": true,
+        "matched_token": "رقم",
+        "matched_number": "182",
+        "prefix_preview": "رقم 182 لسنة 1960 المعدل بالقانون رقم 12",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "129",
+        "is_suspected": true,
+        "matched_token": "رقم",
+        "matched_number": "182",
+        "prefix_preview": "رقم 182 لسنة 1960 المعدل بالقانون رقم 12",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "145",
+        "is_suspected": true,
+        "matched_token": "مؤمن",
+        "matched_number": "048",
+        "prefix_preview": "048 مؤمن 12 قانون رقم 90 لسنة 1944 بالرس",
+        "reason": "text opens with a suspected extraction-noise pattern (digit_then_token) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "158",
+        "is_suspected": true,
+        "matched_token": "مؤمن",
+        "matched_number": "7",
+        "prefix_preview": "مؤمن 7 قانون العمل الموحد 010 قانون رقم ",
+        "reason": "text opens with a suspected extraction-noise pattern (token_then_number) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      },
+      {
+        "document_id": "186",
+        "is_suspected": true,
+        "matched_token": "مؤمن",
+        "matched_number": "048",
+        "prefix_preview": "048 مؤمن 11 قانون الاسماء التجارية رقم 5",
+        "reason": "text opens with a suspected extraction-noise pattern (digit_then_token) before any recognized legal-document opening phrase; consistent with an OCR/extraction artifact observed in a real Dataflare sample, unconfirmed at scale — this is a v1 heuristic covering 2 observed variants from a 10-row sample, not a validated corpus-wide rule"
+      }
+    ]
+  },
+  "parser_versions": {
+    "document_type_classifier": "rule_based_v1",
+    "article_segmenter": "inline_reference_filtered_v2",
+    "case_citation_parser": "regex_v1"
+  },
+  "software_commit": "9ce874edddb503eccd9980acc504b924a308a9cd",
+  "generated_at": "2026-08-30T14:20:17Z",
+  "resource_measurement": {
+    "wall_time_seconds": 19.904,
+    "peak_rss_mb": 470.0,
+    "python_version": "3.12.3",
+    "os": "Linux 6.18.44-fc-v22",
+    "machine": "x86_64",
+    "measurement_note": "Single-process stdlib+pandas run; no LLM/embedding model/GPU loaded for this stage. peak_rss_mb via resource.getrusage (ru_maxrss, Linux=KB)."
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "software_version": "dataset_intake_v1",
+  "input": "legal_documents.json",
+  "input_hash": "b6c9c8826e1acdfb033b786921fc9a7ccc8db5574a53d1499701633a524632f3",
+  "quality_profile": {
+    "record_count": 952,
+    "empty_records": 0,
+    "missing_required_fields": {
+      "article_id": 468
+    },
+    "malformed_records": 0,
+    "invalid_identifiers": 0,
+    "duplicate_count": 0,
+    "near_duplicate_count": 0,
+    "text_length_distribution": {
+      "200-499": 425,
+      "50-199": 389,
+      "500-1499": 126,
+      "1-49": 11,
+      "1500+": 1
+    },
+    "language_distribution": {
+      "arabic": 950,
+      "arabic_english_mixed": 2
+    },
+    "jurisdiction_distribution": {
+      "EG": 952
+    },
+    "law_distribution": {
+      "قانون الإجراءات الجنائية": 484,
+      "قانون العقوبات طبقا لأحدث التعديلات بالقانون 95 لسنة 2003م": 468
+    },
+    "date_distribution": {
+      "unknown": 952
+    },
+    "citation_completeness": 0.5084033613445378,
+    "content_hash": "b6c9c8826e1acdfb033b786921fc9a7ccc8db5574a53d1499701633a524632f3",
+    "warnings": []
+  },
+  "split": {
+    "strategy": "grouped_hash_split_v1",
+    "seed": 42,
+    "group_fields": [
+      "law_id",
+      "document_id",
+      "source_id",
+      "case_id",
+      "question_group"
+    ],
+    "group_count": 2,
+    "split_sizes": {
+      "train": 952,
+      "validation": 0,
+      "held_out_test": 0
+    },
+    "rationale": "Grouped by first-present field of ['law_id', 'document_id', 'source_id', 'case_id', 'question_group'] to avoid splitting records that share law/document/case identity across train/val/test; 2 groups assigned via seeded hash bucketing (seed=42)."
+  },
+  "decision": "pass"
+}
