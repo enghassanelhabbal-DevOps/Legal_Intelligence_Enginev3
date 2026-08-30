@@ -1378,7 +1378,7 @@ def main() -> None:
         if config.get("provider") == "Local Qwen":
             if not LOCAL_RUNTIME_ALLOWED:
                 st.caption("Runtime: disabled by environment — local FAISS/BGE model is not safe in this environment")
-                st.info("To enable local runtime, follow docs/LOCAL_QWEN_RUNBOOK.md and run the backend on a dedicated Linux host. Or choose a cloud provider (Google Gemini / OpenAI) in the sidebar.")
+                st.info("To enable local runtime, follow docs/runbooks/LOCAL_QWEN.md and run the backend on a dedicated Linux host. Or choose a cloud provider (Google Gemini / OpenAI) in the sidebar.")
             else:
                 if last_runtime_error:
                     st.error("Last local runtime error: " + str(last_runtime_error)[:400])

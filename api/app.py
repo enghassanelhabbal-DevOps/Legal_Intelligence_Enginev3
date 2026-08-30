@@ -196,7 +196,7 @@ async def query(req: QueryRequest, request: Request, x_api_key: str | None = Hea
 def ingest(payload: IngestRequest, x_api_key: str | None = Header(None)) -> dict[str, Any]:
     """Validate and stage new documents. Does NOT hot-swap the live index —
     that requires an explicit redeploy/restart so a bad ingest can never
-    silently corrupt a running service. See docs/BACKEND_DEPLOY.md.
+    silently corrupt a running service. See docs/runbooks/BACKEND_DEPLOY.md.
     """
     _require_api_key(x_api_key)
 

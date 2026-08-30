@@ -69,9 +69,9 @@ See:
 
 - `docs/runbooks/GPU_SETUP.md`
 - `docs/runbooks/PORTABILITY.md`
-- `docs/BACKEND_DEPLOY.md`
-- `docs/LOCAL_QWEN_RUNBOOK.md` when present
-- `docs/WSL_TESTING.md` when present
+- `docs/runbooks/BACKEND_DEPLOY.md`
+- `docs/runbooks/LOCAL_QWEN.md` when present
+- `docs/runbooks/WSL_TESTING.md` when present
 
 ## Evaluation truth
 
