@@ -36,9 +36,30 @@ def normalize_arabic(text: str) -> str:
     return " ".join(text.split())
 
 
+def nfc_normalize(text: str) -> str:
+    """NFC-only normalization — composes decomposed combining marks (e.g.
+    ALEF+YEH+COMBINING-HAMZA-ABOVE into precomposed ئ) WITHOUT the
+    aggressive rewriting normalize_arabic() does (no lowercasing, no alef
+    merging, no diacritic stripping, no tatweel removal).
+
+    Use this before substring/regex matching of hardcoded Arabic marker
+    strings (document type classification, article segmentation, citation
+    extraction, text-quality diagnostics) — real Egyptian legal corpora
+    have been observed to use decomposed hamza forms inconsistently
+    (confirmed on dataflare/egypt-legal-corpus: a hand-typed precomposed
+    marker like "نقض جنائي" silently failed to match real category text
+    using the decomposed form, with zero visible difference when printed).
+    NFC preserves the character count/meaning closely enough that
+    offset-based operations (e.g. article_segmentation's start/end
+    offsets) remain meaningful, unlike normalize_arabic()'s more
+    aggressive rewriting.
+    """
+    return unicodedata.normalize("NFC", str(text))
+
+
 def tokenize(text: str) -> list[str]:
     """Tokenize normalized Arabic text into whitespace-separated tokens."""
     return normalize_arabic(text).split()
 
 
-__all__ = ["normalize_arabic", "tokenize"]
+__all__ = ["normalize_arabic", "nfc_normalize", "tokenize"]
