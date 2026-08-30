@@ -1,78 +1,91 @@
-# Legal Intelligence Engine — Foundation Documentation Index
+# Legal Intelligence Engine — Foundation Index
 
-> Status: Authoritative foundation set for `feat/enterprise-foundation`.
-> `ARCHITECTURE_CONTRACT.md` is the authoritative architecture contract (V4), approved after adversarial review and full-system verification.
-> These documents define implementation guidance, evaluation policy, data governance, reliability, product scope, and stage execution.
+Repository: https://github.com/enghassanelhabbal-DevOps/Legal_Intelligence_Enginev3
 
-## Purpose
+Active engineering branch: `feat/enterprise-foundation`
 
-This directory is the operating system for building the Legal Intelligence Engine as a production-grade Legal AI platform rather than a demo chatbot.
+`ARCHITECTURE_CONTRACT.md` is the authoritative architecture contract.
 
-## Document hierarchy
+## Read order
 
-1. `ARCHITECTURE_CONTRACT.md` — authoritative technical contract.
-2. `CLAUDE.md` — implementation/review instructions for Claude Code and coding agents.
-3. `PRODUCT_REQUIREMENTS.md` — product scope, users, workflows, acceptance criteria, and non-goals.
-4. `LEGAL_DOMAIN_SPEC.md` — legal semantics, jurisdictions, temporal law, authority, and answer behavior.
-5. `DATA_GOVERNANCE.md` — dataset intake, provenance, licensing, quality, leakage, and release policy.
-6. `EVALUATION_SYSTEM_SPEC.md` — evaluation tracks, benchmarks, datasets, metrics, and quality gates.
-7. `RESOURCE_RELIABILITY_SPEC.md` — resource budgets, adaptive execution, fault handling, and failure learning.
-8. `SECURITY_PRIVACY_SPEC.md` — threat model, trust boundaries, secrets, data isolation, and abuse resistance.
-9. `SYSTEM_COMPONENT_SPEC.md` — component responsibilities, interfaces, provider boundaries, and dependency rules.
-10. `DELIVERY_STAGE_PLAN.md` — staged implementation plan and definition of done.
-11. `ENGINEERING_DECISION_REGISTER.md` — durable decisions and their rationale.
-12. Existing runbooks, reviews, and promotion artifacts — deployment and implementation details.
+1. `ARCHITECTURE_CONTRACT.md` — architecture, product direction, invariants, stage boundaries.
+2. `CLAUDE.md` — implementation/review rules for Claude Code and engineering agents.
+3. `COPILOT.md` — concise coding-agent rules.
+4. `docs/REPOSITORY_STRUCTURE.md` — canonical repository layout and cleanup rules.
+5. `docs/PRODUCT_REQUIREMENTS.md` — product scope, users, workflows, acceptance criteria, non-goals.
+6. `docs/LEGAL_DOMAIN_SPEC.md` — legal semantics, authority, jurisdiction, temporal behavior.
+7. `docs/DATA_GOVERNANCE.md` — dataset intake, provenance, licensing, leakage and releases.
+8. `docs/EVALUATION_SYSTEM_SPEC.md` — benchmark tracks, metrics and release gates.
+9. `docs/RESOURCE_RELIABILITY_SPEC.md` — resource budgets, recovery and failure learning.
+10. `docs/SECURITY_PRIVACY_SPEC.md` — trust boundaries, secrets, privacy and abuse resistance.
+11. `docs/SYSTEM_COMPONENT_SPEC.md` — component ownership and dependency boundaries.
+12. `docs/DELIVERY_STAGE_PLAN.md` — stage sequencing and definition of done.
+13. `docs/ENGINEERING_GOVERNANCE.md` — engineering process and review discipline.
+14. `docs/ENGINEERING_DECISION_REGISTER.md` — durable architectural decisions.
+15. `docs/CLAUDE_STAGE_HANDOFF_TEMPLATE.md` — reusable stage review handoff.
+16. `docs/CLAUDE_EXECUTION_MASTER.md` — current Stage 1 completion/cleanup execution brief.
 
-## Current truth vs target truth
+## Supporting documentation
 
-The project MUST distinguish three states:
+- `docs/runbooks/` — operational setup/deployment/runtime guidance.
+- `docs/research/` — active corpus/research investigations only.
+- `artifacts/reports/` — measured reports and reproducible benchmark outputs.
 
-- **Verified:** behavior measured in the current code/repository.
-- **Required:** architectural or product behavior that must exist before a release gate can pass.
-- **Planned:** future capability that is intentionally deferred.
+Historical architecture drafts and promotion patches are intentionally removed from the working tree after promotion. Git history is the archive.
 
-A planned capability is never presented as implemented.
+## Truth model
 
-## Development loop
+Every project claim must be classified as one of:
 
-```text
-Requirement
-  -> Architecture decision
-  -> Small implementation step
-  -> Tests
-  -> Benchmark
-  -> Resource measurement
-  -> Claude adversarial review
-  -> Human/project-owner decision
-  -> Authorized fix
-  -> Re-test
-  -> Decision record
-  -> Release
-```
+- **Verified** — reproduced by current code/tests/benchmarks/artifacts.
+- **Required** — contractually required before the relevant release gate.
+- **Planned** — intentionally deferred capability.
 
-## Primary objective
+A classifier prediction is not verified legal truth. A parser miss is not proof that legal structure is absent. A successful model call is not proof of legal correctness.
 
-Build an evidence-first, jurisdiction-aware, version-aware, resource-efficient legal intelligence system that starts with Egyptian law and can later support explicit GCC/MENA jurisdiction packs.
+## Current stage
 
-## First product wedge
+The project is completing **Stage 1 — Dataset Intake + Evaluation Foundation**.
 
-Egyptian legal research + evidence reports for professional users.
+Primary objectives:
 
-## First technical objective
+- legal-resource/document-type representation;
+- source/provenance handling;
+- structure parsing;
+- exact duplicate clustering without provenance loss;
+- leakage-safe grouping;
+- dataset manifests and reports;
+- independent evaluation preparation;
+- manual-gold validation design.
 
-Create a trustworthy evaluation and data foundation before training/fine-tuning or adding agentic complexity.
+No fine-tuning or broad retrieval optimization is authorized by Stage 1.
 
 ## Current protected truth
 
-The historical `MRR=0.835` hybrid figure is treated as an **unverified historical reference** unless a reproducible harness is restored. The CI smoke baseline is useful as a regression guard but is not proof of legal understanding. The full dense+BM25+reranker pipeline must receive its own reproducible benchmark before its quality is claimed.
+The historical `MRR=0.835` value is an **UNVERIFIED HISTORICAL REFERENCE** unless an authoritative reproducible harness is restored.
 
-## Review model
+The current BM25 self-retrieval smoke benchmark is a regression guard only, not evidence of Egyptian legal understanding.
 
-- Architecture and product intent: project owner + architecture review.
-- Implementation and adversarial code review: Claude Code.
-- Measured truth: tests, benchmarks, CI artifacts, and reproducible reports.
-- Legal semantic validation: domain-expert review where required.
+Full dense + BM25 + reranker production-path benchmarking belongs to Stage 4.
 
-## Rule
+## Engineering loop
 
-When two documents disagree, stop and resolve the contradiction. Never silently choose whichever document is convenient.
+```text
+Requirement
+  -> architecture/decision
+  -> smallest coherent implementation
+  -> focused tests
+  -> integration/regression tests
+  -> lint/type checks
+  -> relevant benchmark/resource measurement
+  -> adversarial review
+  -> project-owner decision
+  -> authorized fixes
+  -> re-test/re-benchmark
+  -> documentation/decision record
+  -> release decision
+```
+
+## Conflict rule
+
+When authoritative documents disagree, stop and resolve the contradiction. Never silently select the most convenient interpretation.
