@@ -35,6 +35,23 @@ class EvaluationError(LegalAIError):
     """Raised when an evaluation metric or benchmark step fails."""
 
 
+class DatasetManifestError(LegalAIError):
+    """Raised for dataset manifest schema, provenance, or license-state problems.
+
+    Deliberately covers schema/provenance/license as one category: all three
+    are "the manifest is not trustworthy enough to use" failures, and Stage 1
+    explicitly avoids over-creating exception classes for that single concept.
+    """
+
+
+class DatasetLeakageError(LegalAIError):
+    """Raised when a held-out/benchmark split would be contaminated."""
+
+
+class DatasetSplitError(LegalAIError):
+    """Raised when a requested split cannot be produced deterministically or safely."""
+
+
 class ConfigError(LegalAIError):
     """Raised for missing or invalid configuration values."""
 
@@ -47,5 +64,8 @@ __all__ = [
     "EvidenceError",
     "GenerationError",
     "EvaluationError",
+    "DatasetManifestError",
+    "DatasetLeakageError",
+    "DatasetSplitError",
     "ConfigError",
 ]

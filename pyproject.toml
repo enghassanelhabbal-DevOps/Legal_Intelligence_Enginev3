@@ -56,6 +56,7 @@ dev = [
 
 [project.scripts]
 legal-rag = "src.legal_ai.cli:main"
+legal-ai-dataset = "src.legal_ai.evaluation.dataset_intake:main"
 
 # Every module in this project imports itself as `src.legal_ai....` (59 call
 # sites). Rather than rewrite every import, `src` is kept as the real

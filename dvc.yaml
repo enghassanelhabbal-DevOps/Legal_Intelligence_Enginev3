@@ -1,4 +1,39 @@
 stages:
+  dataflare_materialize:
+    cmd: python scripts/materialize_dataflare_stage1.py
+    deps:
+      - data/raw/dataflare/egypt-legal-corpus-train-00000-of-00001.parquet
+      - scripts/materialize_dataflare_stage1.py
+      - src/legal_ai/domain/document_type.py
+      - src/legal_ai/domain/duplicate_clustering.py
+      - src/legal_ai/domain/evaluation_case.py
+      - src/legal_ai/ingestion/article_segmentation.py
+      - src/legal_ai/ingestion/case_citation_extraction.py
+      - src/legal_ai/ingestion/text_quality_diagnostics.py
+      - src/legal_ai/evaluation/leakage.py
+    outs:
+      - artifacts/datasets/dataflare_egypt_legal_corpus_v1/manifest.json
+      - artifacts/datasets/dataflare_egypt_legal_corpus_v1/split_manifest.json
+      - artifacts/datasets/dataflare_egypt_legal_corpus_v1/manual_review_manifest.json
+      - artifacts/reports/dataflare_corpus_report_v1.json
+    # NOTE: the parquet source is not yet `dvc add`-ed / pushed to a DVC
+    # remote in this environment (no remote configured/verified here) — the
+    # script independently verifies the file's SHA-256 before running and
+    # refuses on mismatch, which is a stronger integrity guarantee than the
+    # DVC dependency alone. Wiring an actual DVC remote for this file is
+    # follow-up work, not done in this pass.
+
+  dataset_profile:
+    cmd: python -m src.legal_ai.evaluation.dataset_intake report legal_documents.json --seed 42 --output artifacts/reports/dataset_profile.json
+    deps:
+      - legal_documents.json
+      - src/legal_ai/evaluation/dataset_manifest.py
+      - src/legal_ai/evaluation/dataset_profiler.py
+      - src/legal_ai/evaluation/leakage.py
+      - src/legal_ai/evaluation/dataset_intake.py
+    outs:
+      - artifacts/reports/dataset_profile.json
+
   build_eval_set:
     cmd: python scripts/build_eval_set.py --documents legal_documents.json --output data/evaluation/eval_queries.json --sample-size 80 --seed 42
     deps:
