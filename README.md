@@ -1,85 +1,94 @@
 # Legal Intelligence Engine
 
-Arabic legal retrieval + grounded generation over the Egyptian legal corpus (Penal
-Code, Criminal Procedures Code, and related laws). Follows the architecture
-contract in `ARCHITECTURE_CONTRACT.md`.
+Repository: https://github.com/enghassanelhabbal-DevOps/Legal_Intelligence_Enginev3
 
-## What is actually included (verified working, not aspirational)
+Active engineering branch: `feat/enterprise-foundation`
 
-- Retrieval: BM25 (`src/legal_ai/retrieval/bm25.py`, pure NumPy) + dense
-  (BGE-M3/FAISS, optional — see extras below) + reranking.
-- One canonical Streamlit UI (`ui/streamlit_app.py`) that runs in **remote
-  mode** against a hosted API, or **embedded mode** (calls `QueryService`
-  in-process) when no API is deployed — same retrieval/generation code either
-  way, never duplicated in the UI.
-- One canonical FastAPI service (`api/app.py`) with a proper startup
-  lifecycle (`QueryService`/`LLMManager` built once, not per-request),
-  a `/v1/ready` probe distinct from `/v1/health`, and schema-validated
-  ingestion.
-- LLM generation behind an adapter (`src/legal_ai/generation/manager.py`):
-  local Qwen3 (Transformers) or any OpenAI-compatible remote endpoint
-  (OpenAI, Gemini, Ollama, vLLM, ...), selected by config — swapping the
-  backend never touches the retrieval engine.
-- A **real** retrieval regression gate (`scripts/regression_harness.py` +
-  `scripts/quality_gate.py`) that runs the actual BM25 engine against the
-  actual 952-article corpus and a reproducible evaluation set
-  (`scripts/build_eval_set.py`) — not a synthetic 3-sentence fixture.
-- DVC-tracked large artifacts (embeddings, FAISS index) — `git ls-files`
-  contains only `.dvc` pointer files, not the binaries themselves.
-- Docker + Docker Compose (one Dockerfile, two services) and a GitHub
-  Actions CI workflow that actually runs lint, tests, the regression gate,
-  and a Docker build on every PR.
+An evidence-first, jurisdiction-aware, version-aware, resource-efficient Legal Intelligence Platform for Arabic legal systems, starting with Egypt.
 
-## Running the Streamlit UI
+This project is not a generic legal chatbot. The engineering goal is to build trustworthy legal knowledge, retrieval, evidence, temporal/jurisdiction correctness, grounded reasoning, abstention, auditability, and measurable reliability.
 
-```bash
-streamlit run ui/streamlit_app.py
+## Start here
+
+1. Read `ARCHITECTURE_CONTRACT.md` — authoritative architecture.
+2. Read `CLAUDE.md` / `COPILOT.md` — coding-agent rules.
+3. Read `docs/FOUNDATION_INDEX.md` — documentation hierarchy.
+4. Read `docs/REPOSITORY_STRUCTURE.md` — clean repository layout.
+5. For current Stage 1 execution, read `docs/CLAUDE_EXECUTION_MASTER.md`.
+
+## Canonical entry points
+
+- API: `api/app.py`
+- Streamlit UI: `ui/streamlit_app.py`
+- Core package: `src/legal_ai/`
+- Tests: `tests/`
+- Evaluation assets: `data/evaluation/`
+- Reproducible artifacts/reports: `artifacts/`
+
+The root `app.py` is known Stage 3 consolidation debt. Do not add new retrieval/generation business logic there.
+
+## Current architecture
+
+```text
+UI / API
+   ↓
+services
+   ↓
+retrieval → reranking → evidence → generation
+      ↑
+ knowledge ← ingestion
+      ↑
+ evaluation / data governance
+
+Cross-cutting: resource policy, failure handling, observability, security
 ```
 
-This is the **only** documented Streamlit entry point. Set `LEGAL_API_URL`
-(env var or Streamlit secret) to run against a separately hosted API, or
-leave it unset to run in embedded mode (needs the full retrieval stack —
-see `requirements.txt`).
+## Current engineering stage
 
-## Quick start (local development)
+The project is completing **Stage 1 — Dataset Intake + Evaluation Foundation**, including Dataflare corpus archaeology, legal-resource identity, document-type classification, provenance, duplicate clustering, leakage-safe grouping, dataset manifests, and independent evaluation preparation.
+
+Stage 1 does not authorize model fine-tuning or broad retrieval optimization. Measurement comes first.
+
+## Development setup
 
 ```bash
 python -m venv .venv
-. .venv/bin/activate  # PowerShell: .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"          # add ".[qwen]" for local Qwen3, ".[gpu]" for CUDA FAISS
-
-pytest                                      # fast tier, no heavy ML deps required
-python scripts/build_eval_set.py            # build the real evaluation set (once)
-python scripts/regression_harness.py        # measure real retrieval quality
-python scripts/quality_gate.py              # fail if it regressed
+# activate for your OS
+python -m pip install -U pip
+python -m pip install -e ".[dev]"
+pytest
 ```
 
-## Docker
+Optional local-model/GPU support:
 
 ```bash
-docker compose up --build
+python -m pip install -e ".[qwen,gpu]"
 ```
 
-API on `http://localhost:8000`, UI on `http://localhost:8501` (talks to the
-API automatically via `LEGAL_API_URL=http://api:8000/v1/query`).
+See:
 
-## DVC (large artifacts)
+- `docs/runbooks/GPU_SETUP.md`
+- `docs/runbooks/PORTABILITY.md`
+- `docs/BACKEND_DEPLOY.md`
+- `docs/LOCAL_QWEN_RUNBOOK.md` when present
+- `docs/WSL_TESTING.md` when present
 
-```bash
-dvc pull     # fetch embeddings/index from the configured remote
-# after regenerating embeddings/index:
-dvc add artifacts/embeddings/dense_embeddings.npy artifacts/indexes/dense_faiss.index
-dvc push
-```
+## Evaluation truth
 
-Set a real remote before relying on this in CI/teammates:
-`dvc remote add -d prod gs://your-bucket/legal-rag-artifacts` (or s3://).
+The historical retrieval figure `MRR=0.835` is an **UNVERIFIED HISTORICAL REFERENCE**, not a current release gate.
 
-## Cross-platform notes
+The current BM25 self-retrieval smoke benchmark is a regression guard only and is not proof of Egyptian legal understanding.
 
-Runs on Windows, WSL2, Ubuntu, and Docker from one codebase — no OS-specific
-forks. `faiss-cpu` is the default (see `pyproject.toml`'s `gpu` extra for
-CUDA). Local Qwen3 inference requires the `qwen` extra and is optional; the
-system is fully functional with an OpenAI-compatible remote backend alone.
-See `docs/WSL_TESTING.md` and `INSTALL_GPU.md` for hardware-specific notes.
+Full dense + lexical + reranker production-path benchmarking belongs to Stage 4.
+
+## Data / artifact policy
+
+Large corpora, embeddings, and indexes should be versioned with DVC/external storage rather than committed as raw binaries. Machine-readable reports and small controlled fixtures may live in Git when appropriate.
+
+Raw legal source text must be preserved. Normalized/chunked text is a derived retrieval representation, not the legal authority.
+
+## Repository hygiene
+
+The root is intentionally small. Historical architecture drafts and superseded promotion files are removed from the working tree because Git history is the archive.
+
+Before adding a new top-level file/package, read `docs/REPOSITORY_STRUCTURE.md` and reuse the canonical location whenever possible.
