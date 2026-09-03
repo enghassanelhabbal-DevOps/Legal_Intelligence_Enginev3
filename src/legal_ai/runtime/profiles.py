@@ -1,0 +1,81 @@
+"""profiles.py — execution profile resolution.
+
+Per RESOURCE_RELIABILITY_SPEC.md §2: profiles are policy presets resolved
+FROM discovered hardware, not hard-coded device assumptions.
+``resolve_profile`` is a pure function over a ``HardwareSnapshot`` (+
+optional operator override / remote-generation flag), so it stays fully
+unit-testable without touching real hardware or importing torch.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+from src.legal_ai.runtime.hardware import HardwareSnapshot
+
+# A GPU is reported as CUDA-available by drivers on cards far too small to
+# usefully hold a retriever/reranker/generator. 3 GiB is a conservative
+# floor below the 4 GiB M2200 dev-hardware target (ARCHITECTURE_CONTRACT.md)
+# so a technically-present-but-too-small GPU does not falsely trigger
+# ACCELERATED and then OOM downstream.
+MIN_ACCELERATED_VRAM_BYTES = 3 * 1024**3
+
+# Below this, prefer CPU-minimal (or remote-LLM if configured) over BALANCED.
+DEFAULT_LOW_RAM_THRESHOLD_BYTES = 8 * 1024**3
+
+
+class ExecutionProfile(StrEnum):
+    CPU_MINIMAL = "cpu_minimal"
+    BALANCED = "balanced"
+    ACCELERATED = "accelerated"
+    REMOTE_LLM = "remote_llm"
+
+
+def resolve_profile(
+    snapshot: HardwareSnapshot,
+    *,
+    override: ExecutionProfile | None = None,
+    remote_generation_configured: bool = False,
+    low_ram_threshold_bytes: int = DEFAULT_LOW_RAM_THRESHOLD_BYTES,
+) -> ExecutionProfile:
+    """Resolve the execution profile for this run.
+
+    Precedence:
+      1. explicit operator override — always wins, no discovery needed;
+      2. ACCELERATED — a GPU is present with at least ``MIN_ACCELERATED_VRAM_BYTES``;
+      3. REMOTE_LLM — a remote generation backend is configured AND local
+         RAM is low or unknown (no point forcing CPU-minimal local
+         generation when a remote backend was explicitly set up for
+         exactly this situation);
+      4. CPU_MINIMAL — RAM is low, or the RAM probe itself failed (fail
+         toward the more conservative profile on unknown hardware);
+      5. BALANCED — the default for adequate, known hardware.
+    """
+    if override is not None:
+        return override
+
+    has_gpu = snapshot.cuda.available and snapshot.cuda.device_count > 0
+    has_sufficient_vram = has_gpu and any(
+        d.total_memory_bytes >= MIN_ACCELERATED_VRAM_BYTES for d in snapshot.cuda.devices
+    )
+    if has_sufficient_vram:
+        return ExecutionProfile.ACCELERATED
+
+    ram_known = snapshot.total_ram_bytes is not None
+    ram_is_low = ram_known and snapshot.total_ram_bytes < low_ram_threshold_bytes  # type: ignore[operator]
+
+    if remote_generation_configured and (ram_is_low or not ram_known):
+        return ExecutionProfile.REMOTE_LLM
+
+    if ram_is_low or not ram_known:
+        return ExecutionProfile.CPU_MINIMAL
+
+    return ExecutionProfile.BALANCED
+
+
+__all__ = [
+    "ExecutionProfile",
+    "resolve_profile",
+    "MIN_ACCELERATED_VRAM_BYTES",
+    "DEFAULT_LOW_RAM_THRESHOLD_BYTES",
+]
