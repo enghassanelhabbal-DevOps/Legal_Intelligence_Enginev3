@@ -67,7 +67,8 @@ class OperationTrace:
             "model_backend": self.model_backend,
             "knowledge_release": self.knowledge_release,
             "stage_timings": [
-                {"stage": t.stage, "duration_seconds": t.duration_seconds} for t in self.stage_timings
+                {"stage": t.stage, "duration_seconds": t.duration_seconds}
+                for t in self.stage_timings
             ],
             "total_duration_seconds": self.total_duration_seconds(),
             "warnings": self.warnings,

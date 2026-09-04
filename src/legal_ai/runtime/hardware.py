@@ -27,6 +27,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 
 from src.legal_ai.core.logging import get_logger
+from src.legal_ai.runtime.cpu_topology import CPUTopology, discover_cpu_topology
 
 logger = get_logger(__name__)
 
@@ -91,14 +92,18 @@ def probe_cuda(timeout_seconds: float = _DEFAULT_CUDA_PROBE_TIMEOUT_SECONDS) -> 
             check=False,
         )
     except subprocess.TimeoutExpired:
-        logger.warning("CUDA probe timed out after %.1fs; treating GPU as unavailable", timeout_seconds)
+        logger.warning(
+            "CUDA probe timed out after %.1fs; treating GPU as unavailable", timeout_seconds
+        )
         return CUDAProbeResult(
             available=False, device_count=0, probe_status="timeout",
             error=f"probe exceeded {timeout_seconds}s timeout",
         )
     except OSError as exc:
         logger.warning("CUDA probe subprocess could not be started: %s", exc)
-        return CUDAProbeResult(available=False, device_count=0, probe_status="probe_error", error=str(exc))
+        return CUDAProbeResult(
+            available=False, device_count=0, probe_status="probe_error", error=str(exc)
+        )
 
     if completed.returncode != 0:
         stderr_tail = completed.stderr.strip()[-500:]
@@ -113,13 +118,16 @@ def probe_cuda(timeout_seconds: float = _DEFAULT_CUDA_PROBE_TIMEOUT_SECONDS) -> 
         payload = json.loads(lines[-1]) if lines else {}
     except (json.JSONDecodeError, IndexError) as exc:
         logger.warning("CUDA probe returned unparseable output: %s", exc)
-        return CUDAProbeResult(available=False, device_count=0, probe_status="probe_error", error=str(exc))
+        return CUDAProbeResult(
+            available=False, device_count=0, probe_status="probe_error", error=str(exc)
+        )
 
     if payload.get("error"):
         # torch missing / driver error inside the child — a known, expected
         # outcome on CPU-only hosts, not a discovery-layer bug.
         return CUDAProbeResult(
-            available=False, device_count=0, probe_status="probe_error", error=str(payload["error"]),
+            available=False, device_count=0, probe_status="probe_error",
+            error=str(payload["error"]),
         )
 
     devices = tuple(GPUDevice(**d) for d in payload.get("devices", []))
@@ -137,31 +145,21 @@ class HardwareSnapshot:
     os_name: str
     os_version: str
     python_version: str
-    cpu_count_logical: int | None
+    cpu_count_logical: int | None  # host logical count — kept for back-compat, prefer cpu_topology
     cpu_count_physical: int | None
     total_ram_bytes: int | None
     ram_probe_status: str  # "ok" | "unavailable"
     storage_free_bytes: int | None
-    cuda: CUDAProbeResult = field(default_factory=lambda: CUDAProbeResult(available=False, device_count=0))
+    cuda: CUDAProbeResult = field(
+        default_factory=lambda: CUDAProbeResult(available=False, device_count=0)
+    )
+    cpu_topology: CPUTopology = field(default_factory=discover_cpu_topology)
 
     def to_dict(self) -> dict:
         d = asdict(self)
         d["cuda"]["devices"] = [asdict(dev) for dev in self.cuda.devices]
+        d["cpu_topology"] = self.cpu_topology.to_dict()
         return d
-
-
-def _cpu_counts() -> tuple[int | None, int | None]:
-    import os as _os
-
-    logical = _os.cpu_count()
-    physical: int | None = None
-    try:
-        import psutil  # type: ignore
-
-        physical = psutil.cpu_count(logical=False)
-    except ImportError:
-        physical = None
-    return logical, physical
 
 
 def _total_ram_bytes() -> tuple[int | None, str]:
@@ -197,7 +195,7 @@ def discover_hardware(
     cuda_timeout_seconds: float = _DEFAULT_CUDA_PROBE_TIMEOUT_SECONDS,
 ) -> HardwareSnapshot:
     """Best-effort hardware discovery. Never raises (RESOURCE_RELIABILITY_SPEC.md §3)."""
-    logical, physical = _cpu_counts()
+    topology = discover_cpu_topology()
     ram_bytes, ram_status = _total_ram_bytes()
     cuda = (
         probe_cuda(timeout_seconds=cuda_timeout_seconds)
@@ -208,12 +206,13 @@ def discover_hardware(
         os_name=platform.system(),
         os_version=platform.version(),
         python_version=platform.python_version(),
-        cpu_count_logical=logical,
-        cpu_count_physical=physical,
+        cpu_count_logical=topology.logical_cores_host,
+        cpu_count_physical=topology.physical_cores_host,
         total_ram_bytes=ram_bytes,
         ram_probe_status=ram_status,
         storage_free_bytes=_storage_free_bytes(),
         cuda=cuda,
+        cpu_topology=topology,
     )
 
 

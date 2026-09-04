@@ -23,6 +23,13 @@ MIN_ACCELERATED_VRAM_BYTES = 3 * 1024**3
 # Below this, prefer CPU-minimal (or remote-LLM if configured) over BALANCED.
 DEFAULT_LOW_RAM_THRESHOLD_BYTES = 8 * 1024**3
 
+# Below this many *effective* (container/affinity-aware) cores, force
+# CPU-minimal regardless of RAM — a 1-2 vCPU container (common on shared/
+# managed hosting, e.g. Streamlit Community Cloud's default tier) cannot
+# usefully run a multi-worker "balanced" pipeline even with plenty of RAM;
+# CPU contention, not memory, is the binding constraint there.
+DEFAULT_LOW_CORE_THRESHOLD = 2
+
 
 class ExecutionProfile(StrEnum):
     CPU_MINIMAL = "cpu_minimal"
@@ -37,6 +44,7 @@ def resolve_profile(
     override: ExecutionProfile | None = None,
     remote_generation_configured: bool = False,
     low_ram_threshold_bytes: int = DEFAULT_LOW_RAM_THRESHOLD_BYTES,
+    low_core_threshold: int = DEFAULT_LOW_CORE_THRESHOLD,
 ) -> ExecutionProfile:
     """Resolve the execution profile for this run.
 
@@ -44,12 +52,19 @@ def resolve_profile(
       1. explicit operator override — always wins, no discovery needed;
       2. ACCELERATED — a GPU is present with at least ``MIN_ACCELERATED_VRAM_BYTES``;
       3. REMOTE_LLM — a remote generation backend is configured AND local
-         RAM is low or unknown (no point forcing CPU-minimal local
-         generation when a remote backend was explicitly set up for
-         exactly this situation);
-      4. CPU_MINIMAL — RAM is low, or the RAM probe itself failed (fail
-         toward the more conservative profile on unknown hardware);
+         hardware is constrained (low/unknown RAM, or few *effective*
+         cores — i.e. the container/affinity-aware count from
+         ``cpu_topology``, not the raw host core count);
+      4. CPU_MINIMAL — RAM is low/unknown, or effective cores are at or
+         below ``low_core_threshold`` (fail toward the conservative
+         profile on constrained or unreadable hardware);
       5. BALANCED — the default for adequate, known hardware.
+
+    Effective-core awareness matters in practice: a container capped at 1-2
+    vCPUs (common on shared/managed hosting) cannot usefully run a
+    multi-worker BALANCED pipeline regardless of how much RAM the host
+    reports, since ``os.cpu_count()`` alone would see the host's full core
+    count and miss the container's actual CPU quota entirely.
     """
     if override is not None:
         return override
@@ -63,11 +78,13 @@ def resolve_profile(
 
     ram_known = snapshot.total_ram_bytes is not None
     ram_is_low = ram_known and snapshot.total_ram_bytes < low_ram_threshold_bytes  # type: ignore[operator]
+    cores_are_low = snapshot.cpu_topology.effective_cores <= low_core_threshold
+    is_constrained = ram_is_low or not ram_known or cores_are_low
 
-    if remote_generation_configured and (ram_is_low or not ram_known):
+    if remote_generation_configured and is_constrained:
         return ExecutionProfile.REMOTE_LLM
 
-    if ram_is_low or not ram_known:
+    if is_constrained:
         return ExecutionProfile.CPU_MINIMAL
 
     return ExecutionProfile.BALANCED
@@ -78,4 +95,5 @@ __all__ = [
     "resolve_profile",
     "MIN_ACCELERATED_VRAM_BYTES",
     "DEFAULT_LOW_RAM_THRESHOLD_BYTES",
+    "DEFAULT_LOW_CORE_THRESHOLD",
 ]

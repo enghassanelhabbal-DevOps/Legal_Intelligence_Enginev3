@@ -12,6 +12,12 @@ unit-testable without torch, GPUs, or a live corpus.
 """
 
 from src.legal_ai.runtime.budgets import ResourceBudget, budget_for_profile
+from src.legal_ai.runtime.cpu_topology import (
+    ContainerRuntime,
+    CPUTopology,
+    discover_cpu_topology,
+    recommended_thread_env,
+)
 from src.legal_ai.runtime.faults import (
     FailureEvent,
     FaultClass,
@@ -27,11 +33,20 @@ from src.legal_ai.runtime.hardware import (
     probe_cuda,
 )
 from src.legal_ai.runtime.profiles import ExecutionProfile, resolve_profile
-from src.legal_ai.runtime.telemetry import OperationTrace, StageTiming, resource_signals, start_trace
+from src.legal_ai.runtime.telemetry import (
+    OperationTrace,
+    StageTiming,
+    resource_signals,
+    start_trace,
+)
 
 __all__ = [
     "ResourceBudget",
     "budget_for_profile",
+    "ContainerRuntime",
+    "CPUTopology",
+    "discover_cpu_topology",
+    "recommended_thread_env",
     "FailureEvent",
     "FaultClass",
     "RecoveryAction",

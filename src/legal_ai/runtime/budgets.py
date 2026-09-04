@@ -10,8 +10,9 @@ in-memory accumulation is permitted anywhere downstream that consumes a
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from src.legal_ai.runtime.cpu_topology import CPUTopology
 from src.legal_ai.runtime.profiles import ExecutionProfile
 
 
@@ -95,15 +96,55 @@ _PROFILE_BUDGETS: dict[ExecutionProfile, ResourceBudget] = {
 }
 
 
-def budget_for_profile(profile: ExecutionProfile) -> ResourceBudget:
+# Per-profile (min_workers, max_workers) clamp applied when scaling
+# max_workers from real effective-core count (see budget_for_profile).
+# CPU_MINIMAL is deliberately absent: that profile stays pinned at 1
+# worker regardless of core count — it is chosen specifically *because*
+# hardware is constrained, and adding workers there would defeat the point.
+_WORKER_CLAMP: dict[ExecutionProfile, tuple[int, int]] = {
+    ExecutionProfile.BALANCED: (2, 8),
+    # CPU-bound preprocessing/queueing feeding a GPU: more CPU workers past
+    # a point don't help and compete with the GPU pipeline for host RAM/PCIe.
+    ExecutionProfile.ACCELERATED: (2, 6),
+    # I/O-bound (waiting on a remote API) — can usefully run more concurrent
+    # workers than physical cores, but still capped, never unbounded (§4/§10).
+    ExecutionProfile.REMOTE_LLM: (4, 16),
+}
+_REMOTE_LLM_WORKER_MULTIPLIER = 2  # I/O-bound: workers may exceed effective_cores, within the clamp
+
+
+def budget_for_profile(
+    profile: ExecutionProfile, cpu_topology: CPUTopology | None = None
+) -> ResourceBudget:
     """Return the bounded resource budget for *profile*.
 
     A dict lookup rather than an if/elif ladder: adding a profile becomes a
     data change, and forgetting to register a budget for a new profile fails
     loudly with ``KeyError`` instead of silently defaulting to an unbounded
     or wrong-profile budget.
+
+    When *cpu_topology* is supplied, ``max_workers`` is scaled from
+    ``cpu_topology.effective_cores`` — the container/affinity-aware core
+    count, not the raw host count — and clamped to a profile-appropriate
+    ``[min, max]`` range so a 1-core container never gets an
+    over-provisioned worker pool and a 64-core host never gets an
+    unbounded one. Without *cpu_topology* (the default), the static
+    baseline budget is returned unchanged, so existing callers that don't
+    yet pass hardware info keep deterministic, previously-verified values.
     """
-    return _PROFILE_BUDGETS[profile]
+    base = _PROFILE_BUDGETS[profile]
+    if cpu_topology is None or profile not in _WORKER_CLAMP:
+        return base
+
+    low, high = _WORKER_CLAMP[profile]
+    if profile is ExecutionProfile.REMOTE_LLM:
+        raw = cpu_topology.effective_cores * _REMOTE_LLM_WORKER_MULTIPLIER
+    else:
+        raw = cpu_topology.effective_cores  # leave headroom for the OS/other processes
+        if profile is ExecutionProfile.BALANCED:
+            raw = max(1, raw - 1)
+    scaled_workers = max(low, min(high, raw))
+    return replace(base, max_workers=scaled_workers)
 
 
 __all__ = ["ResourceBudget", "budget_for_profile"]

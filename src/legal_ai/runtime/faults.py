@@ -62,20 +62,40 @@ class RecoveryPolicy:
 # an honest, immediate failure.
 _DEFAULT_POLICIES: dict[FaultClass, RecoveryPolicy] = {
     FaultClass.INVALID_INPUT: RecoveryPolicy(RecoveryAction.FAIL_CLOSED_NO_RETRY, max_attempts=0),
-    FaultClass.DATA_CORRUPTION: RecoveryPolicy(RecoveryAction.QUARANTINE_AND_FAIL_CLOSED, max_attempts=0),
-    FaultClass.ARTIFACT_MISSING: RecoveryPolicy(RecoveryAction.QUARANTINE_AND_FAIL_CLOSED, max_attempts=0),
-    FaultClass.ARTIFACT_INCOMPATIBLE: RecoveryPolicy(RecoveryAction.QUARANTINE_AND_FAIL_CLOSED, max_attempts=0),
+    FaultClass.DATA_CORRUPTION: RecoveryPolicy(
+        RecoveryAction.QUARANTINE_AND_FAIL_CLOSED, max_attempts=0
+    ),
+    FaultClass.ARTIFACT_MISSING: RecoveryPolicy(
+        RecoveryAction.QUARANTINE_AND_FAIL_CLOSED, max_attempts=0
+    ),
+    FaultClass.ARTIFACT_INCOMPATIBLE: RecoveryPolicy(
+        RecoveryAction.QUARANTINE_AND_FAIL_CLOSED, max_attempts=0
+    ),
     FaultClass.MODEL_LOAD_FAILURE: RecoveryPolicy(RecoveryAction.FALLBACK_BACKEND, max_attempts=1),
     FaultClass.OUT_OF_MEMORY: RecoveryPolicy(RecoveryAction.REDUCE_BATCH_AND_RETRY, max_attempts=1),
-    FaultClass.TIMEOUT: RecoveryPolicy(RecoveryAction.BOUNDED_BACKOFF_RETRY, max_attempts=2, backoff_seconds=1.0),
+    FaultClass.TIMEOUT: RecoveryPolicy(
+        RecoveryAction.BOUNDED_BACKOFF_RETRY, max_attempts=2, backoff_seconds=1.0
+    ),
     FaultClass.BACKEND_FAILURE: RecoveryPolicy(RecoveryAction.FALLBACK_BACKEND, max_attempts=1),
-    FaultClass.RATE_LIMIT: RecoveryPolicy(RecoveryAction.BOUNDED_BACKOFF_RETRY, max_attempts=3, backoff_seconds=2.0),
-    FaultClass.DEPENDENCY_FAILURE: RecoveryPolicy(RecoveryAction.FAIL_CLOSED_NO_RETRY, max_attempts=0),
-    FaultClass.RETRIEVAL_MISS: RecoveryPolicy(RecoveryAction.RETURN_INSUFFICIENT_EVIDENCE, max_attempts=0),
-    FaultClass.EVIDENCE_INSUFFICIENT: RecoveryPolicy(RecoveryAction.RETURN_INSUFFICIENT_EVIDENCE, max_attempts=0),
+    FaultClass.RATE_LIMIT: RecoveryPolicy(
+        RecoveryAction.BOUNDED_BACKOFF_RETRY, max_attempts=3, backoff_seconds=2.0
+    ),
+    FaultClass.DEPENDENCY_FAILURE: RecoveryPolicy(
+        RecoveryAction.FAIL_CLOSED_NO_RETRY, max_attempts=0
+    ),
+    FaultClass.RETRIEVAL_MISS: RecoveryPolicy(
+        RecoveryAction.RETURN_INSUFFICIENT_EVIDENCE, max_attempts=0
+    ),
+    FaultClass.EVIDENCE_INSUFFICIENT: RecoveryPolicy(
+        RecoveryAction.RETURN_INSUFFICIENT_EVIDENCE, max_attempts=0
+    ),
     FaultClass.CITATION_MISMATCH: RecoveryPolicy(RecoveryAction.REJECT_AND_REPAIR, max_attempts=1),
-    FaultClass.JURISDICTION_CONFLICT: RecoveryPolicy(RecoveryAction.SURFACE_WARNING_SELECT_VERIFIED, max_attempts=0),
-    FaultClass.TEMPORAL_CONFLICT: RecoveryPolicy(RecoveryAction.SURFACE_WARNING_SELECT_VERIFIED, max_attempts=0),
+    FaultClass.JURISDICTION_CONFLICT: RecoveryPolicy(
+        RecoveryAction.SURFACE_WARNING_SELECT_VERIFIED, max_attempts=0
+    ),
+    FaultClass.TEMPORAL_CONFLICT: RecoveryPolicy(
+        RecoveryAction.SURFACE_WARNING_SELECT_VERIFIED, max_attempts=0
+    ),
     FaultClass.UNKNOWN: RecoveryPolicy(RecoveryAction.FAIL_CLOSED_NO_RETRY, max_attempts=0),
 }
 
