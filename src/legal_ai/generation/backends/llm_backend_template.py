@@ -9,7 +9,7 @@ shape as `_try_load_qwen` / `_try_load_openai_compatible`.
 
 from __future__ import annotations
 
-from typing import Protocol, Any
+from typing import Any, Protocol
 
 
 class LLMBackend(Protocol):

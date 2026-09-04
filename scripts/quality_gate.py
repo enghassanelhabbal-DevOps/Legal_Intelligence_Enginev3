@@ -23,7 +23,10 @@ from src.legal_ai.evaluation.baseline import SELF_RETRIEVAL_SMOKE_BASELINE, Retr
 
 def load_report(path: Path) -> RetrievalBaseline:
     if not path.exists():
-        print(f"ERROR: regression report not found at {path}. Run scripts/regression_harness.py first.")
+        print(
+            f"ERROR: regression report not found at {path}. "
+            "Run scripts/regression_harness.py first."
+        )
         sys.exit(2)
     data = json.loads(path.read_text(encoding="utf-8"))
     m = data["metrics"]
@@ -33,7 +36,10 @@ def load_report(path: Path) -> RetrievalBaseline:
         recall_at_3=m["Recall@3"],
         recall_at_5=m["Recall@5"],
         recall_at_10=m["Recall@10"],
-        description=f"measured ({data.get('corpus_documents')} docs, {data.get('eval_set_size')} queries)",
+        description=(
+            f"measured ({data.get('corpus_documents')} docs, "
+            f"{data.get('eval_set_size')} queries)"
+        ),
     )
 
 

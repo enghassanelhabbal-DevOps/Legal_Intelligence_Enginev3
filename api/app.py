@@ -160,7 +160,8 @@ def ready() -> JSONResponse:
     failed to load its documents.
     """
     if _state.get("service") is not None:
-        return JSONResponse({"status": "ready", "uptime_s": round(time.time() - _state["started_at"], 1)})
+        uptime_s = round(time.time() - _state["started_at"], 1)
+        return JSONResponse({"status": "ready", "uptime_s": uptime_s})
     return JSONResponse(
         {"status": "not_ready", "error": _state.get("startup_error")},
         status_code=503,
@@ -168,7 +169,9 @@ def ready() -> JSONResponse:
 
 
 @app.post("/v1/query", response_model=QueryResponse)
-async def query(req: QueryRequest, request: Request, x_api_key: str | None = Header(None)) -> QueryResponse:
+async def query(
+    req: QueryRequest, request: Request, x_api_key: str | None = Header(None)
+) -> QueryResponse:
     _require_api_key(x_api_key)
 
     key = x_api_key or (request.client.host if request.client else "unknown")
@@ -207,7 +210,9 @@ def ingest(payload: IngestRequest, x_api_key: str | None = Header(None)) -> dict
 
     staging_path = Path(os.environ.get("INGEST_STAGING_PATH", "data/staged_documents.json"))
     staging_path.parent.mkdir(parents=True, exist_ok=True)
-    staging_path.write_text(json.dumps(payload.documents, ensure_ascii=False, indent=2), encoding="utf-8")
+    staging_path.write_text(
+        json.dumps(payload.documents, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     return {
         "status": "staged",

@@ -23,6 +23,7 @@ from src.legal_ai.knowledge import EmbeddingCache, KnowledgeVersion
 from src.legal_ai.retrieval.bm25 import BM25
 from src.legal_ai.retrieval.dense import DenseEncoder, DenseIndex
 from src.legal_ai.retrieval.hybrid import HybridRetriever, _lexical_text, _metadata_text
+from src.legal_ai.runtime.plan import ResolvedRuntimePlan
 
 LOGGER = get_logger(__name__)
 
@@ -34,8 +35,18 @@ RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 # Runtime helpers
 # ---------------------------------------------------------------------------
 
-def configure_runtime(cfg: RuntimeConfig) -> str:
-    """Configure torch settings and return the resolved device string."""
+def configure_runtime(cfg: RuntimeConfig, *, known_cuda_available: bool | None = None) -> str:
+    """Configure torch settings and return the resolved device string.
+
+    `known_cuda_available`: pass this when the caller already resolved
+    CUDA availability through `runtime.hardware.probe_cuda()`'s isolated
+    subprocess (e.g. via `ResolvedRuntimePlan`/`prepare_pipeline_from_plan`)
+    to avoid a second, unprotected in-process `torch.cuda.is_available()`
+    call here. Left as `None` (the default) preserves the previous direct
+    in-process check for any existing caller that constructs a bare
+    `RuntimeConfig` without going through the runtime-plan resolution path
+    — no behavior change for callers that haven't opted in.
+    """
     import os
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
@@ -43,18 +54,23 @@ def configure_runtime(cfg: RuntimeConfig) -> str:
     if cfg.num_threads > 0:
         torch.set_num_threads(cfg.num_threads)
 
-    if cfg.enable_tf32 and torch.cuda.is_available():
+    def _cuda_available() -> bool:
+        if known_cuda_available is not None:
+            return known_cuda_available
+        return torch.cuda.is_available()
+
+    if cfg.enable_tf32 and _cuda_available():
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
     if cfg.device == "cpu":
         device = "cpu"
     elif cfg.device == "cuda":
-        if not torch.cuda.is_available():
+        if not _cuda_available():
             raise RuntimeError("CUDA requested but no CUDA GPU found.")
         device = f"cuda:{cfg.gpu_id}"
     else:
-        device = f"cuda:{cfg.gpu_id}" if torch.cuda.is_available() else "cpu"
+        device = f"cuda:{cfg.gpu_id}" if _cuda_available() else "cpu"
 
     LOGGER.info("Device: %s", device)
     if device.startswith("cuda"):
@@ -154,6 +170,8 @@ def prepare_pipeline(
     pipeline_cfg: PipelineConfig,
     out_dir: Path,
     load_reranker: bool = True,
+    *,
+    known_cuda_available: bool | None = None,
 ) -> tuple[HybridRetriever, dict[str, Any]]:
     """Assemble and return (HybridRetriever, runtime_info_dict).
 
@@ -162,11 +180,14 @@ def prepare_pipeline(
       <out_dir>/indexes/     — dense_faiss.index
       <out_dir>/reports/     — runtime_info.json
       <out_dir>/             — knowledge_version.json  (root, for version discovery)
+
+    `known_cuda_available`: forwarded to `configure_runtime()` — see its
+    docstring. Set automatically by `prepare_pipeline_from_plan()`.
     """
     reports_dir = out_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    device = configure_runtime(runtime)
+    device = configure_runtime(runtime, known_cuda_available=known_cuda_available)
     dtype = choose_dtype(runtime, device)
     LOGGER.info("Inference dtype: %s", dtype)
 
@@ -185,7 +206,9 @@ def prepare_pipeline(
     info: dict[str, Any] = {
         "device": device,
         "dtype": str(dtype),
-        "gpu_name": torch.cuda.get_device_name(runtime.gpu_id) if device.startswith("cuda") else None,
+        "gpu_name": (
+            torch.cuda.get_device_name(runtime.gpu_id) if device.startswith("cuda") else None
+        ),
         "cuda_version": torch.version.cuda,
         "platform": platform.platform(),
         "python": platform.python_version(),
@@ -214,9 +237,42 @@ def prepare_pipeline(
     return retriever, info
 
 
+def prepare_pipeline_from_plan(
+    documents: list[dict[str, Any]],
+    plan: ResolvedRuntimePlan,
+    out_dir: Path,
+    pipeline_cfg: PipelineConfig | None = None,
+) -> tuple[HybridRetriever, dict[str, Any]]:
+    """Convenience wrapper: derive `RuntimeConfig`/`PipelineConfig` from a
+    centrally-resolved `ResolvedRuntimePlan` (see `runtime.plan`) instead
+    of hand-building them, and skip the redundant in-process CUDA re-probe
+    inside `configure_runtime()` — the plan already resolved device
+    availability through the isolated subprocess probe (DR-028). Retrieval
+    semantics are unchanged: this only changes how `prepare_pipeline`'s
+    existing arguments are constructed.
+    """
+    runtime_cfg = plan.to_runtime_config()
+    resolved_pipeline_cfg = plan.to_pipeline_config(pipeline_cfg)
+    load_reranker = plan.budget.rerank_batch_size > 0
+    return prepare_pipeline(
+        documents,
+        runtime_cfg,
+        resolved_pipeline_cfg,
+        out_dir,
+        load_reranker=load_reranker,
+        known_cuda_available=plan.hardware.cuda.available,
+    )
+
+
 def _save_json(obj: Any, path: Path) -> None:
     with path.open("w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
 
 
-__all__ = ["build_index", "prepare_pipeline", "configure_runtime", "choose_dtype"]
+__all__ = [
+    "build_index",
+    "prepare_pipeline",
+    "prepare_pipeline_from_plan",
+    "configure_runtime",
+    "choose_dtype",
+]

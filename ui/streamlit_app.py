@@ -43,7 +43,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 API_URL = os.getenv("LEGAL_API_URL", "").strip()
-LOCAL_RUNTIME_ALLOWED = os.getenv("ALLOW_LOCAL_MODEL_RUNTIME", "0").strip().lower() in {"1", "true", "yes", "on"}
+LOCAL_RUNTIME_ALLOWED = os.getenv("ALLOW_LOCAL_MODEL_RUNTIME", "0").strip().lower() in {
+    "1", "true", "yes", "on",
+}
 DOCUMENTS_PATH = ROOT / os.getenv("DOCUMENTS_PATH", "legal_documents.json")
 
 
@@ -78,7 +80,10 @@ with st.sidebar:
         st.success(f"Remote API mode\n\n{API_URL}")
         provider_config: dict[str, Any] = {}
     else:
-        st.info("Embedded mode — no LEGAL_API_URL configured.\nRunning retrieval + generation in-process.")
+        st.info(
+            "Embedded mode — no LEGAL_API_URL configured.\n"
+            "Running retrieval + generation in-process."
+        )
         provider = st.selectbox(
             "LLM provider",
             ["OpenAI-compatible (OpenAI / Gemini / self-hosted)"]
@@ -106,7 +111,8 @@ with st.sidebar:
         top_k = st.slider("Top results", min_value=3, max_value=10, value=5)
 
     st.markdown("---")
-    st.caption(f"Corpus: `{DOCUMENTS_PATH.name}`" + (" (found)" if DOCUMENTS_PATH.exists() else " ⚠️ NOT FOUND"))
+    found_suffix = " (found)" if DOCUMENTS_PATH.exists() else " ⚠️ NOT FOUND"
+    st.caption(f"Corpus: `{DOCUMENTS_PATH.name}`" + found_suffix)
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +190,9 @@ if query and query.strip():
             if API_URL:
                 result = _run_remote(query, top_k=5)
             else:
-                result = _run_embedded(query, top_k=top_k if "top_k" in dir() else 5, config=provider_config)
+                result = _run_embedded(
+                    query, top_k=top_k if "top_k" in dir() else 5, config=provider_config
+                )
 
         if result.get("error"):
             st.error(result["error"])

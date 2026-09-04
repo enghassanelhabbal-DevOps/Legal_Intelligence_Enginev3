@@ -143,7 +143,9 @@ class LLMManager:
         if requested == "openai_compatible":
             if self._try_load_openai_compatible():
                 return
-            raise GenerationError("Requested backend 'openai_compatible' failed to load (missing api_key?).")
+            raise GenerationError(
+                "Requested backend 'openai_compatible' failed to load (missing api_key?)."
+            )
 
         # "auto": prefer local Qwen, fall back to a remote endpoint if configured.
         if self._try_load_qwen():

@@ -31,6 +31,7 @@ __all__ = [
     "HybridRetriever",
     "build_index",
     "prepare_pipeline",
+    "prepare_pipeline_from_plan",
 ]
 
 _LAZY = {
@@ -39,6 +40,7 @@ _LAZY = {
     "HybridRetriever": ("src.legal_ai.retrieval.hybrid", "HybridRetriever"),
     "build_index": ("src.legal_ai.retrieval.pipeline", "build_index"),
     "prepare_pipeline": ("src.legal_ai.retrieval.pipeline", "prepare_pipeline"),
+    "prepare_pipeline_from_plan": ("src.legal_ai.retrieval.pipeline", "prepare_pipeline_from_plan"),
 }
 
 
@@ -51,9 +53,8 @@ def __getattr__(name: str) -> Any:
             module = importlib.import_module(module_name)
         except ImportError as exc:  # pragma: no cover - depends on optional deps
             raise ImportError(
-                f"'{name}' requires torch/faiss (dense retrieval extras). "
-                f"Install with: pip install -e '.[qwen]' or ensure faiss-cpu/torch "
-                f"are installed. Original error: {exc}"
+                f"'{name}' requires torch/faiss (the 'dense' extra). "
+                f"Install with: pip install -e '.[dense]'. Original error: {exc}"
             ) from exc
         value = getattr(module, attr_name)
         globals()[name] = value

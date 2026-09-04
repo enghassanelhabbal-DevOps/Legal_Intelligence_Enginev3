@@ -1,0 +1,183 @@
+{
+  "report": "stage2_runtime_benchmark",
+  "hardware_discovery": {
+    "discover_hardware_ms": 32.12,
+    "cuda_probe_status": "probe_error",
+    "cuda_probe_isolation": "spawned_subprocess_with_hard_timeout",
+    "snapshot": {
+      "os_name": "Linux",
+      "os_version": "#1 SMP PREEMPT_DYNAMIC @0",
+      "python_version": "3.12.3",
+      "cpu_count_logical": 1,
+      "cpu_count_physical": 1,
+      "total_ram_bytes": 4192030720,
+      "ram_probe_status": "ok",
+      "storage_free_bytes": 10516463616,
+      "cuda": {
+        "available": false,
+        "device_count": 0,
+        "devices": [],
+        "probe_status": "probe_error",
+        "error": "ModuleNotFoundError: No module named 'torch'"
+      },
+      "cpu_topology": {
+        "logical_cores_host": 1,
+        "physical_cores_host": 1,
+        "affinity_cores": 1,
+        "cgroup_quota_cores": null,
+        "container_runtime": "none",
+        "hyperthreading_likely": false,
+        "effective_cores": 1,
+        "effective_cores_source": "affinity_mask"
+      }
+    }
+  },
+  "resolved_plans": {
+    "cpu_minimal": {
+      "device": "cpu",
+      "precision": "fp32",
+      "budget": {
+        "max_workers": 1,
+        "max_queue_size": 4,
+        "dense_batch_size": 8,
+        "rerank_batch_size": 0,
+        "max_seq_length": 512,
+        "max_candidates": 20,
+        "max_retries": 1,
+        "request_timeout_seconds": 20.0,
+        "memory_target_bytes": 2147483648
+      },
+      "derived_runtime_config": {
+        "device": "cpu",
+        "dense_batch_size": 8,
+        "rerank_batch_size": 0,
+        "num_threads": 1
+      },
+      "derived_pipeline_config": {
+        "dense_candidates": 20,
+        "rerank_candidates": 0
+      },
+      "derived_generation_config": {
+        "timeout_s": 20
+      }
+    },
+    "balanced": {
+      "device": "cpu",
+      "precision": "fp32",
+      "budget": {
+        "max_workers": 2,
+        "max_queue_size": 16,
+        "dense_batch_size": 32,
+        "rerank_batch_size": 16,
+        "max_seq_length": 1024,
+        "max_candidates": 40,
+        "max_retries": 2,
+        "request_timeout_seconds": 30.0,
+        "memory_target_bytes": 8589934592
+      },
+      "derived_runtime_config": {
+        "device": "cpu",
+        "dense_batch_size": 32,
+        "rerank_batch_size": 16,
+        "num_threads": 1
+      },
+      "derived_pipeline_config": {
+        "dense_candidates": 30,
+        "rerank_candidates": 40
+      },
+      "derived_generation_config": {
+        "timeout_s": 30
+      }
+    },
+    "accelerated": {
+      "device": "cpu",
+      "precision": "fp32",
+      "budget": {
+        "max_workers": 2,
+        "max_queue_size": 32,
+        "dense_batch_size": 64,
+        "rerank_batch_size": 32,
+        "max_seq_length": 1024,
+        "max_candidates": 60,
+        "max_retries": 2,
+        "request_timeout_seconds": 20.0,
+        "memory_target_bytes": 4294967296
+      },
+      "derived_runtime_config": {
+        "device": "cpu",
+        "dense_batch_size": 64,
+        "rerank_batch_size": 32,
+        "num_threads": 1
+      },
+      "derived_pipeline_config": {
+        "dense_candidates": 30,
+        "rerank_candidates": 40
+      },
+      "derived_generation_config": {
+        "timeout_s": 20
+      }
+    },
+    "remote_llm": {
+      "device": "cpu",
+      "precision": "fp32",
+      "budget": {
+        "max_workers": 4,
+        "max_queue_size": 16,
+        "dense_batch_size": 16,
+        "rerank_batch_size": 8,
+        "max_seq_length": 1024,
+        "max_candidates": 30,
+        "max_retries": 3,
+        "request_timeout_seconds": 60.0,
+        "memory_target_bytes": 4294967296
+      },
+      "derived_runtime_config": {
+        "device": "cpu",
+        "dense_batch_size": 16,
+        "rerank_batch_size": 8,
+        "num_threads": 1
+      },
+      "derived_pipeline_config": {
+        "dense_candidates": 30,
+        "rerank_candidates": 30
+      },
+      "derived_generation_config": {
+        "timeout_s": 60,
+        "backend": "openai_compatible"
+      }
+    }
+  },
+  "bounded_execution": {
+    "configured_capacity": 4,
+    "submissions_attempted": 9,
+    "submissions_accepted": 7,
+    "submissions_rejected_by_backpressure": 2,
+    "backpressure_triggered": true
+  },
+  "adaptive_batch_policy": {
+    "outcome_sequence": [
+      "oom",
+      "oom",
+      "success",
+      "success",
+      "success",
+      "oom",
+      "success",
+      "success",
+      "success"
+    ],
+    "batch_size_trace": [
+      64,
+      32,
+      16,
+      16,
+      16,
+      32,
+      16,
+      16,
+      16,
+      32
+    ],
+    "deterministic_replay_match": true
+  }
+}

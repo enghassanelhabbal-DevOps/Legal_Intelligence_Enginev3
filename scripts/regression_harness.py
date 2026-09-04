@@ -36,9 +36,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.legal_ai.evaluation.metrics import mean_mrr, mean_recall_at_k
 from src.legal_ai.ingestion.normalization import normalize_arabic, tokenize
 from src.legal_ai.retrieval.bm25 import BM25
-from src.legal_ai.evaluation.metrics import mean_mrr, mean_recall_at_k
 
 
 def _corpus_hash(documents: list[dict]) -> str:
@@ -66,7 +66,9 @@ def run_harness(documents_path: Path, eval_set_path: Path, top_k: int = 10) -> d
     for item in eval_queries:
         hits = bm25.top_n(item["query"], n=top_k)
         retrieved_ids = [doc_ids[idx] for idx, _score in hits]
-        per_query_results.append({"retrieved": retrieved_ids, "relevant": item["relevant_document_ids"]})
+        per_query_results.append(
+            {"retrieved": retrieved_ids, "relevant": item["relevant_document_ids"]}
+        )
     query_ms = (time.perf_counter() - t1) * 1000
 
     report = {

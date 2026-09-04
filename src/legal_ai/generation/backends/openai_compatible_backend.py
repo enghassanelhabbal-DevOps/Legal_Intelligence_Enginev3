@@ -91,7 +91,9 @@ class OpenAICompatibleBackend:
             raise GenerationError(f"Remote LLM request failed: {exc}") from exc
 
         if not response.ok:
-            raise GenerationError(f"Remote LLM returned {response.status_code}: {response.text[:300]}")
+            raise GenerationError(
+                f"Remote LLM returned {response.status_code}: {response.text[:300]}"
+            )
 
         try:
             data = response.json()

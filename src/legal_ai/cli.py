@@ -14,7 +14,9 @@ from src.legal_ai.services.query_service import QueryService
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Portable GPU-accelerated Legal RAG retrieval core")
+    parser = argparse.ArgumentParser(
+        description="Portable GPU-accelerated Legal RAG retrieval core"
+    )
     parser.add_argument("--documents", default="legal_documents.json")
     parser.add_argument("--output", default="artifacts_portable")
     parser.add_argument("--query", default="ما شروط القبض على المتهم في حالة التلبس؟")
@@ -32,7 +34,10 @@ def main() -> None:
     parser.add_argument("--max-seq-length", type=int, default=1024)
     parser.add_argument("--compile-reranker", action="store_true")
     parser.add_argument("--no-reranker", action="store_true")
-    parser.add_argument("--generate", action="store_true", help="Run full RAG pipeline including LLM generation")
+    parser.add_argument(
+        "--generate", action="store_true",
+        help="Run full RAG pipeline including LLM generation",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")

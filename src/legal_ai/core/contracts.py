@@ -46,7 +46,7 @@ class Answer:
     citations: list[dict] = field(default_factory=list)   # [{law_name, article_id, text}]
     evidence: list[dict] = field(default_factory=list)    # raw evidence chunks used
     warnings: list[str] = field(default_factory=list)     # e.g. "insufficient evidence"
-    timing: dict = field(default_factory=dict)            # {"retrieval_ms": ..., "generation_ms": ...}
+    timing: dict = field(default_factory=dict)  # {"retrieval_ms": ..., "generation_ms": ...}
 
 
 __all__ = ["LegalDocument", "RetrievalResult", "Answer"]

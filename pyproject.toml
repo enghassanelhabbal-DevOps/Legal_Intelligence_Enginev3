@@ -11,31 +11,49 @@ requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [{ name = "H Elhabbal" }]
 
-# Core dependencies: everything the RAG engine + API need to run retrieval
-# end-to-end on CPU. This is the single source of truth for the project's
-# dependency graph — requirements-portable.txt / requirements-qwen-m2200.txt /
-# api/requirements.txt have been folded into the extras below and removed.
+# Core dependencies: the lightweight path only — BM25 retrieval, remote/
+# OpenAI-compatible generation, the API/service layer, and Stage 1/2
+# governance modules (runtime/, domain/, evaluation/). Deliberately does
+# NOT include torch/faiss-cpu/sentence-transformers: those are heavy,
+# sometimes GPU-driver-sensitive dependencies only needed for local dense
+# retrieval/reranking/Qwen generation (see the `dense` and `qwen` extras
+# below). A `pip install -e '.[streamlit]'` / bare `pip install -e .` on a
+# remote-generation-only deployment (Streamlit Community Cloud, a thin API
+# gateway) must not pull in torch — see DR-030.
 dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.29",
     "pydantic>=2.7",
     "numpy>=1.26,<3",
-    "torch>=2.5,<3",
-    "sentence-transformers>=5.0,<6",
-    "faiss-cpu>=1.8,<2",
     "rank-bm25>=0.2",
+    "requests>=2.31",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
     "psutil>=6.0,<8",
 ]
 
 [project.optional-dependencies]
+# Local dense retrieval/reranking (BGE-M3 encoder, FAISS index, BGE
+# cross-encoder reranker). Required for `DenseEncoder`/`DenseIndex`/
+# `Reranker`/`HybridRetriever`/`build_index`/`prepare_pipeline` — all
+# already lazily imported (PEP 562 in retrieval/__init__.py, deferred
+# import in pipeline.py for the reranker) so importing the package
+# without this extra installed still works for the BM25 + remote-
+# generation path; only calling these specific symbols requires it.
+dense = [
+    "torch>=2.5,<3",
+    "sentence-transformers>=5.0,<6",
+    "faiss-cpu>=1.8,<2",
+]
+
 # GPU-accelerated retrieval (swap faiss-cpu for faiss-gpu on a CUDA host).
 gpu = ["faiss-gpu>=1.8,<2"]
 
 # Local Qwen3 generation backend (transformers-based). Only needed on a host
 # that will actually run local inference (e.g. the M2200-class dev GPU).
+# Depends on `dense` for torch (self-referencing extra — requires pip>=21.2).
 qwen = [
+    "legal-intelligence-engine[dense]",
     "transformers>=4.50,<5",
     "accelerate>=1.10,<2",
     "safetensors>=0.5,<1",

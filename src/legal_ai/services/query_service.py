@@ -16,7 +16,14 @@ from src.legal_ai.core.models import PipelineConfig, RuntimeConfig
 from src.legal_ai.evidence import build_grounded_context, select_evidence, validate_citations
 from src.legal_ai.generation import LLMManager
 from src.legal_ai.ingestion.validation import validate_documents
-from src.legal_ai.retrieval import prepare_pipeline
+
+# `prepare_pipeline`/`prepare_pipeline_from_plan` are deliberately NOT
+# imported at module level: `src.legal_ai.retrieval`'s `__getattr__`
+# (PEP 562) only defers torch/faiss loading past *that* module's import —
+# a top-level `from src.legal_ai.retrieval import prepare_pipeline` here
+# would immediately trigger it anyway, forcing torch on every
+# `import query_service`, including BM25-only/remote-generation-only
+# deployments that never call it (DR-032 / Stage 2 packaging gate).
 
 LOGGER = get_logger(__name__)
 
@@ -41,6 +48,8 @@ class QueryService:
         self.artifact_dir = artifact_dir
 
         LOGGER.info("Preparing retrieval pipeline …")
+        from src.legal_ai.retrieval import prepare_pipeline  # noqa: PLC0415
+
         self.retriever, self.runtime_info = prepare_pipeline(
             documents, runtime, pipeline_cfg, artifact_dir, load_reranker=load_reranker
         )
@@ -62,6 +71,44 @@ class QueryService:
             docs = json.load(f)
         return cls(docs, runtime, pipeline_cfg, artifact_dir, load_reranker, llm_config)
 
+    @classmethod
+    def from_plan(
+        cls,
+        documents: list[dict[str, Any]],
+        plan: Any,
+        artifact_dir: Path,
+        pipeline_cfg: PipelineConfig | None = None,
+        llm_config: dict[str, Any] | None = None,
+    ) -> QueryService:
+        """Construct a `QueryService` from a centrally-resolved
+        `ResolvedRuntimePlan` (see `runtime.plan.resolve_runtime_plan()`)
+        instead of hand-built `RuntimeConfig`/`PipelineConfig`/generation
+        config. Device, batch sizes, candidate counts, and generation
+        timeout are all derived from the single plan resolution rather
+        than independently guessed here — retrieval/generation logic
+        itself is unchanged, only how it is configured.
+
+        `plan` is typed `Any` to avoid this lightweight-importable module
+        acquiring a hard, module-level dependency on `runtime.plan` at
+        import time for callers that never use this constructor path.
+        """
+        instance = object.__new__(cls)
+        validate_documents(documents)
+        instance.pipeline_cfg = plan.to_pipeline_config(pipeline_cfg)
+        instance.artifact_dir = artifact_dir
+
+        LOGGER.info(
+            "Preparing retrieval pipeline from ResolvedRuntimePlan (profile=%s) …", plan.profile
+        )
+        from src.legal_ai.retrieval import prepare_pipeline_from_plan  # noqa: PLC0415
+
+        instance.retriever, instance.runtime_info = prepare_pipeline_from_plan(
+            documents, plan, artifact_dir, instance.pipeline_cfg
+        )
+        instance.runtime_info["resolved_runtime_plan"] = plan.to_dict()
+        instance.llm = LLMManager(config=plan.to_generation_config(llm_config))
+        return instance
+
     # ------------------------------------------------------------------
 
     def retrieve(self, query: str, top_k: int | None = None) -> dict[str, Any]:
@@ -73,8 +120,9 @@ class QueryService:
         t0 = time.perf_counter()
 
         retrieval = self.retrieve(query, top_k=top_k)
-        evidence = select_evidence(retrieval["results"], max_chars=self.pipeline_cfg.max_context_chars)
-        context = build_grounded_context(evidence, max_chars=self.pipeline_cfg.max_context_chars)
+        max_chars = self.pipeline_cfg.max_context_chars
+        evidence = select_evidence(retrieval["results"], max_chars=max_chars)
+        context = build_grounded_context(evidence, max_chars=max_chars)
 
         t1 = time.perf_counter()
 

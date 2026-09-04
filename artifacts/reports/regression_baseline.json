@@ -4,9 +4,9 @@
   "corpus_hash": "235ae1d3b47bb4e6",
   "eval_set_size": 80,
   "eval_set_methodology": "self_retrieval_smoke_v1",
-  "index_build_ms": 23.24,
-  "total_query_ms": 337.83,
-  "avg_query_ms": 4.223,
+  "index_build_ms": 11.07,
+  "total_query_ms": 281.91,
+  "avg_query_ms": 3.524,
   "metrics": {
     "MRR": 0.975,
     "Recall@1": 0.9625,
