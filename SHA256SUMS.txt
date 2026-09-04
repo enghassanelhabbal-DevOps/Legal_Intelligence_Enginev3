@@ -1,0 +1,6 @@
+d87f404c188584c25b925b67989981592cb7ebedeebe3a57f9f02abe40dd6f1b  transfer/legal-intelligence-stage1.bundle
+c883e1665042112c6b114172a86d01f32b1afed289de9c2a3dd81ce94323c682  transfer/stage1-patches/0001-docs-reorganize-repository-structure-per-REPOSITORY_.patch
+e7917b0b230b58abcd683bd87a99334593e030e8255098761733cd33f8b7f351  transfer/stage1-patches/0002-feat-domain-add-canonical-legal-resource-identity-co.patch
+77aae90fa9e1fa522d755a858dfbca00d0098aa28ac7c7803df52dc2bf607554  transfer/stage1-patches/0003-feat-ingestion-Arabic-aware-structural-parsing-for-t.patch
+6772c759e4d619c71af6226df1f7342b68e8a7a8197ef4d783508aef1e7d3735  transfer/stage1-patches/0004-feat-evaluation-dataset-intake-manifest-profiling-an.patch
+2b471d0c952dd6898cf36bfc95c6059b8c17c334698e119bf34926d84fcecc98  transfer/stage1-patches/0005-feat-materialize-Stage-1-Dataflare-corpus-artifacts-.patch
