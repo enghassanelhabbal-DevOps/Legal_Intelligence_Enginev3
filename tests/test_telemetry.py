@@ -56,3 +56,14 @@ def test_trace_to_dict_is_json_serializable_and_excludes_payload_text():
 def test_resource_signals_never_raises():
     signals = resource_signals()
     assert isinstance(signals, dict)
+
+
+def test_resource_signals_degrades_when_process_disappears(monkeypatch):
+    import psutil
+
+    def raise_no_such_process():
+        raise psutil.NoSuchProcess(12345)
+
+    monkeypatch.setattr(psutil, "Process", raise_no_such_process)
+
+    assert resource_signals() == {}

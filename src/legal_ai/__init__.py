@@ -7,8 +7,6 @@ Sub-packages follow the ARCHITECTURE_CONTRACT.md dependency order:
 
 __version__ = "0.2.0"
 
-from . import core, evidence, evaluation, generation, ingestion, knowledge, reranking, retrieval, services
-
 __all__ = [
     "core",
     "knowledge",

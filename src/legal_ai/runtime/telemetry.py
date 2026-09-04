@@ -99,13 +99,16 @@ def resource_signals() -> dict[str, float]:
     """
     try:
         import psutil  # type: ignore
+    except ImportError:
+        return {}
 
+    try:
         proc = psutil.Process()
         with proc.oneshot():
             rss_bytes = float(proc.memory_info().rss)
             cpu_percent = float(proc.cpu_percent(interval=None))
         return {"rss_bytes": rss_bytes, "cpu_percent": cpu_percent}
-    except ImportError:
+    except (psutil.Error, OSError):
         return {}
 
 

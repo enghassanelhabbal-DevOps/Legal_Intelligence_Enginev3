@@ -19,11 +19,10 @@ jobs:
       - name: Install dependencies (BM25/API/test tier — no torch/faiss download)
         run: |
           python -m pip install --upgrade pip
-          pip install fastapi "uvicorn[standard]" pydantic numpy rank-bm25 pyyaml python-dotenv requests psutil
-          pip install pytest pytest-cov ruff mypy
+          python -m pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check src api ui scripts --output-format=github
+        run: python -m ruff check src api ui scripts --output-format=github
 
       - name: Type-check governed Stage 1/2 modules (runtime, domain, evaluation, core)
         # Scoped deliberately: these four packages are the Stage 1/2
@@ -37,10 +36,10 @@ jobs:
         # sentence-transformers installed to resolve correctly, which
         # violates this job's "no heavy ML deps, no GPU" lightweight-tier
         # contract. See DR-032.
-        run: mypy src/legal_ai/runtime src/legal_ai/domain src/legal_ai/evaluation src/legal_ai/core
+        run: python -m mypy src/legal_ai/runtime src/legal_ai/domain src/legal_ai/evaluation src/legal_ai/core
 
       - name: Unit tests (Stage 1/2 CPU-safe tier — no heavy ML deps, no GPU, no API secrets required)
-        run: pytest tests/ --ignore=tests/test_retrieval.py -v
+        run: python -m pytest tests/ --ignore=tests/test_retrieval.py -v
 
       - name: Build real evaluation set from the actual corpus
         run: python scripts/build_eval_set.py --sample-size 80 --seed 42
