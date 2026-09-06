@@ -14,6 +14,8 @@ from sentence_transformers import CrossEncoder
 
 from src.legal_ai.core.logging import get_logger
 from src.legal_ai.core.models import RetrievalHit
+from src.legal_ai.runtime.adaptive_batch import AdaptiveBatchState, initial_state
+from src.legal_ai.runtime.torch_adaptive_batch import run_batch_with_adaptive_policy
 
 LOGGER = get_logger(__name__)
 
@@ -53,6 +55,11 @@ class Reranker:
             except Exception as exc:
                 LOGGER.warning("torch.compile unavailable for reranker: %s", exc)
 
+        # See DenseEncoder._batch_state — same deterministic adaptive-batch
+        # pattern (runtime.adaptive_batch / runtime.torch_adaptive_batch),
+        # persisted across score() calls on this instance.
+        self._batch_state: AdaptiveBatchState | None = None
+
     def score(
         self,
         query: str,
@@ -60,20 +67,33 @@ class Reranker:
         batch_size: int,
         max_chars: int,
     ) -> np.ndarray:
-        """Return a float32 array of shape (len(candidates),) with raw scores."""
+        """Return a float32 array of shape (len(candidates),) with raw scores.
+
+        `batch_size` is the CEILING for this call — see
+        `DenseEncoder.encode_documents`'s docstring for why stepping this
+        down on OOM cannot change the returned scores, only how much
+        memory a single forward pass uses.
+        """
         pairs = [
             [query, f"{c.law_name}: {c.text}"[:max_chars]]
             for c in candidates
         ]
-        with torch.inference_mode():
-            scores = self.model.predict(
-                pairs,
-                batch_size=batch_size,
-                show_progress_bar=False,
-                convert_to_numpy=True,
-                apply_softmax=False,
-            )
-        return np.asarray(scores, dtype=np.float32).reshape(-1)
+        if self._batch_state is None or self._batch_state.ceiling != batch_size:
+            self._batch_state = initial_state(ceiling=batch_size)
+
+        def _score_at(size: int) -> np.ndarray:
+            with torch.inference_mode():
+                scores = self.model.predict(
+                    pairs,
+                    batch_size=size,
+                    show_progress_bar=False,
+                    convert_to_numpy=True,
+                    apply_softmax=False,
+                )
+            return np.asarray(scores, dtype=np.float32).reshape(-1)
+
+        result, self._batch_state = run_batch_with_adaptive_policy(self._batch_state, _score_at)
+        return result
 
     def unload(self) -> None:
         """Move model to CPU and release GPU memory."""

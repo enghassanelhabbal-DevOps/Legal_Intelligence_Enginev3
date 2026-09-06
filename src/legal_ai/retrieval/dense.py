@@ -18,6 +18,8 @@ import torch
 from sentence_transformers import SentenceTransformer
 
 from src.legal_ai.core.logging import get_logger
+from src.legal_ai.runtime.adaptive_batch import AdaptiveBatchState, initial_state
+from src.legal_ai.runtime.torch_adaptive_batch import run_batch_with_adaptive_policy
 
 LOGGER = get_logger(__name__)
 
@@ -43,25 +45,50 @@ class DenseEncoder:
             self.model.half()
         self.device = device
         self.dtype = dtype
+        # Adaptive batch state (runtime.adaptive_batch): re-initialized per
+        # `encode_documents` call whenever the caller's requested ceiling
+        # changes, otherwise persisted across calls so a batch size that
+        # had to shrink due to OOM can recover back toward the ceiling over
+        # the encoder's lifetime rather than re-starting from scratch every
+        # call.
+        self._batch_state: AdaptiveBatchState | None = None
 
     # ------------------------------------------------------------------
 
     def encode_documents(self, texts: Sequence[str], batch_size: int) -> np.ndarray:
-        """Batch-encode a list of document texts.  Returns float32 array (N, dim)."""
-        _autocast = (
-            torch.autocast(device_type="cuda", dtype=self.dtype)
-            if self.device.startswith("cuda") and self.dtype == torch.bfloat16
-            else nullcontext()
-        )
-        with torch.inference_mode(), _autocast:
-            embeddings = self.model.encode(
-                list(texts),
-                batch_size=batch_size,
-                normalize_embeddings=True,
-                convert_to_numpy=True,
-                show_progress_bar=True,
+        """Batch-encode a list of document texts. Returns float32 array (N, dim).
+
+        `batch_size` is the CEILING for this call — the deterministic
+        adaptive batch policy (`runtime.adaptive_batch`, wired via
+        `runtime.torch_adaptive_batch`) may run at a smaller size and
+        retry (bounded) if an out-of-memory condition is hit, but it will
+        never encode above `batch_size`. Encoding is a pure function of
+        the input texts — grouping them into smaller batches changes
+        nothing about the returned embeddings, only how much memory a
+        single forward pass uses, so this cannot affect retrieval
+        scoring/ranking.
+        """
+        if self._batch_state is None or self._batch_state.ceiling != batch_size:
+            self._batch_state = initial_state(ceiling=batch_size)
+
+        def _encode_at(size: int) -> np.ndarray:
+            _autocast = (
+                torch.autocast(device_type="cuda", dtype=self.dtype)
+                if self.device.startswith("cuda") and self.dtype == torch.bfloat16
+                else nullcontext()
             )
-        return np.asarray(embeddings, dtype=np.float32)
+            with torch.inference_mode(), _autocast:
+                embeddings = self.model.encode(
+                    list(texts),
+                    batch_size=size,
+                    normalize_embeddings=True,
+                    convert_to_numpy=True,
+                    show_progress_bar=True,
+                )
+            return np.asarray(embeddings, dtype=np.float32)
+
+        result, self._batch_state = run_batch_with_adaptive_policy(self._batch_state, _encode_at)
+        return result
 
     def encode_query(self, query: str) -> np.ndarray:
         """Encode a single query.  Returns float32 array (1, dim)."""

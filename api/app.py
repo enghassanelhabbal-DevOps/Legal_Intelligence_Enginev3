@@ -15,6 +15,7 @@ Design rules enforced here (see ARCHITECTURE_CONTRACT.md):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -29,8 +30,8 @@ from pydantic import BaseModel, Field
 from src.legal_ai.core.config import set_seed
 from src.legal_ai.core.exceptions import IngestionError
 from src.legal_ai.core.logging import get_logger
-from src.legal_ai.core.models import PipelineConfig, RuntimeConfig
 from src.legal_ai.ingestion.validation import validate_documents
+from src.legal_ai.runtime import BackpressureRejected, BoundedExecutor, resolve_runtime_plan
 from src.legal_ai.services.query_service import QueryService
 
 LOGGER = get_logger(__name__)
@@ -38,10 +39,11 @@ LOGGER = get_logger(__name__)
 DOCUMENTS_PATH = Path(os.environ.get("DOCUMENTS_PATH", "legal_documents.json"))
 ARTIFACT_DIR = Path(os.environ.get("ARTIFACT_DIR", "artifacts"))
 API_KEY = os.environ.get("API_KEY")
-LOAD_RERANKER = os.environ.get("LOAD_RERANKER", "0").strip().lower() in {"1", "true", "yes"}
 
 # Populated once at startup by the lifespan handler below; never rebuilt per-request.
-_state: dict[str, Any] = {"service": None, "startup_error": None, "started_at": None}
+_state: dict[str, Any] = {
+    "service": None, "executor": None, "plan": None, "startup_error": None, "started_at": None,
+}
 
 
 @asynccontextmanager
@@ -52,15 +54,42 @@ async def lifespan(app: FastAPI):
         if not DOCUMENTS_PATH.exists():
             raise FileNotFoundError(f"Documents file not found: {DOCUMENTS_PATH}")
         documents = json.loads(DOCUMENTS_PATH.read_text(encoding="utf-8"))
-        runtime = RuntimeConfig()
-        pipeline_cfg = PipelineConfig()
-        _state["service"] = QueryService(
-            documents=documents,
-            runtime=runtime,
-            pipeline_cfg=pipeline_cfg,
-            artifact_dir=ARTIFACT_DIR,
-            load_reranker=LOAD_RERANKER,
+
+        # All device/batch/candidate/worker/queue policy is resolved ONCE
+        # here and centrally owned by ResolvedRuntimePlan (runtime.plan) —
+        # QueryService.from_plan() derives RuntimeConfig/PipelineConfig/
+        # generation config and whether the reranker loads at all
+        # (plan.budget.rerank_batch_size > 0) from it directly. This
+        # replaces the previous hand-built RuntimeConfig()/PipelineConfig()
+        # + a separate LOAD_RERANKER env var, which was exactly the kind of
+        # parallel, duplicate hard-coded policy Stage 2 closes out.
+        # EXECUTION_PROFILE (optional): "cpu_minimal" | "balanced" |
+        # "accelerated" | "remote_llm" — force a profile instead of
+        # auto-resolving from discovered hardware.
+        override_name = os.environ.get("EXECUTION_PROFILE")
+        override_profile = None
+        if override_name:
+            from src.legal_ai.runtime import ExecutionProfile
+
+            override_profile = ExecutionProfile(override_name.strip().lower())
+        plan = resolve_runtime_plan(
+            override_profile=override_profile,
+            remote_generation_configured=bool(os.environ.get("REMOTE_LLM_API_BASE")),
         )
+        LOGGER.info(
+            "Resolved runtime plan: profile=%s device=%s max_workers=%d max_queue_size=%d",
+            plan.profile, plan.device, plan.budget.max_workers, plan.budget.max_queue_size,
+        )
+        _state["service"] = QueryService.from_plan(documents, plan, ARTIFACT_DIR)
+        # Bounded execution/backpressure (runtime.execution.BoundedExecutor):
+        # every /v1/query request submits its retrieval+reranking+generation
+        # work through this executor rather than running it directly on the
+        # event-loop thread. Capacity (running + queued) is
+        # plan.budget.max_workers + plan.budget.max_queue_size — both
+        # resolved from real hardware/profile, never a separately hard-coded
+        # number.
+        _state["executor"] = BoundedExecutor(plan.budget, thread_name_prefix="query-worker")
+        _state["plan"] = plan
         _state["started_at"] = time.time()
         LOGGER.info("Startup complete: %d documents indexed.", len(documents))
     except Exception as exc:  # noqa: BLE001 - we want /v1/ready to report this, not crash boot
@@ -73,6 +102,9 @@ async def lifespan(app: FastAPI):
     if service is not None:
         LOGGER.info("Shutting down: releasing model memory.")
         service.close()
+    executor = _state.get("executor")
+    if executor is not None:
+        executor.shutdown(wait=True)
 
 
 app = FastAPI(title="Legal RAG API", version="0.3.0", lifespan=lifespan)
@@ -111,6 +143,14 @@ def _get_service() -> QueryService:
         detail = _state.get("startup_error") or "Service not initialized yet."
         raise HTTPException(status_code=503, detail=f"Service unavailable: {detail}")
     return service
+
+
+def _get_executor() -> BoundedExecutor:
+    executor = _state.get("executor")
+    if executor is None:
+        detail = _state.get("startup_error") or "Service not initialized yet."
+        raise HTTPException(status_code=503, detail=f"Service unavailable: {detail}")
+    return executor
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +219,24 @@ async def query(
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     service = _get_service()
+    executor = _get_executor()
+
+    # This is the real, production concurrency path: every request submits
+    # its retrieval+reranking+generation work to the BoundedExecutor
+    # (runtime.execution) rather than calling service.answer() directly on
+    # the event-loop thread, which would (a) block ALL other requests while
+    # one query runs, since service.answer() is a synchronous, CPU/GPU-
+    # bound call, and (b) let concurrent requests pile up with no bound.
+    # block=False: at capacity (plan.budget.max_workers + max_queue_size
+    # already running/queued), reject immediately as 503 rather than queue
+    # unbounded additional work.
     try:
-        result = service.answer(req.query, top_k=req.top_k)
+        future = executor.submit(service.answer, req.query, top_k=req.top_k, block=False)
+    except BackpressureRejected as exc:
+        raise HTTPException(status_code=503, detail=f"Server busy: {exc}") from exc
+
+    try:
+        result = await asyncio.wrap_future(future)
     except Exception as exc:  # noqa: BLE001
         LOGGER.exception("Query failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

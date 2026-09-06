@@ -39,7 +39,11 @@ jobs:
         run: python -m mypy src/legal_ai/runtime src/legal_ai/domain src/legal_ai/evaluation src/legal_ai/core
 
       - name: Unit tests (Stage 1/2 CPU-safe tier — no heavy ML deps, no GPU, no API secrets required)
-        run: python -m pytest tests/ --ignore=tests/test_retrieval.py -v
+        run: >
+          python -m pytest tests/
+          --ignore=tests/test_retrieval.py
+          --ignore=tests/test_dense_reranker_adaptive_batch.py
+          -v
 
       - name: Build real evaluation set from the actual corpus
         run: python scripts/build_eval_set.py --sample-size 80 --seed 42

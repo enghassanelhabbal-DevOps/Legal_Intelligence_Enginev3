@@ -1,19 +1,36 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 from src.legal_ai.runtime.hardware import CUDAProbeResult, GPUDevice, HardwareSnapshot
 from src.legal_ai.runtime.plan import ResolvedRuntimePlan, resolve_runtime_plan
 from src.legal_ai.runtime.profiles import ExecutionProfile
 
 
-def test_resolve_runtime_plan_never_touches_torch(monkeypatch):
-    import sys
-
+def test_resolve_runtime_plan_never_touches_torch():
     plan = resolve_runtime_plan(probe_cuda_enabled=False)
-    assert "torch" not in sys.modules
     assert isinstance(plan, ResolvedRuntimePlan)
     assert plan.device in {"cpu"}  # no CUDA probed -> never accelerated
+
+    # Checking in-process sys.modules here would be order-dependent: if
+    # another test in the same pytest session already imported torch
+    # (e.g. test_dense_reranker_adaptive_batch.py, when the `dense` extra
+    # happens to be installed), this process's sys.modules is contaminated
+    # regardless of what resolve_runtime_plan() itself does. A clean
+    # subprocess is the only reliable way to verify this — the same
+    # reasoning DR-028 already applies to CUDA probing.
+    check_script = (
+        "import sys; from src.legal_ai.runtime import resolve_runtime_plan; "
+        "resolve_runtime_plan(probe_cuda_enabled=False); "
+        "assert 'torch' not in sys.modules, sorted(sys.modules)"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", check_script],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_override_profile_is_respected_end_to_end():

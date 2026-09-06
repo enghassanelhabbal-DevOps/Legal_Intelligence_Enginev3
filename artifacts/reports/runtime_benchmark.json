@@ -1,8 +1,8 @@
 {
   "report": "stage2_runtime_benchmark",
   "hardware_discovery": {
-    "discover_hardware_ms": 32.12,
-    "cuda_probe_status": "probe_error",
+    "discover_hardware_ms": 1475.42,
+    "cuda_probe_status": "unavailable",
     "cuda_probe_isolation": "spawned_subprocess_with_hard_timeout",
     "snapshot": {
       "os_name": "Linux",
@@ -12,13 +12,13 @@
       "cpu_count_physical": 1,
       "total_ram_bytes": 4192030720,
       "ram_probe_status": "ok",
-      "storage_free_bytes": 10516463616,
+      "storage_free_bytes": 4059316224,
       "cuda": {
         "available": false,
         "device_count": 0,
         "devices": [],
-        "probe_status": "probe_error",
-        "error": "ModuleNotFoundError: No module named 'torch'"
+        "probe_status": "unavailable",
+        "error": null
       },
       "cpu_topology": {
         "logical_cores_host": 1,
@@ -179,5 +179,32 @@
       32
     ],
     "deterministic_replay_match": true
+  },
+  "integrated_api_path": {
+    "configured_capacity": 1,
+    "second_request_rejected_with_503": true,
+    "first_request_completed": true,
+    "proves": "the real /v1/query endpoint submits through BoundedExecutor (sized from ResourceBudget) and rejects over-capacity concurrent requests with HTTP 503 rather than blocking the event loop or queuing unbounded work"
+  },
+  "integrated_dense_reranker_path": {
+    "skipped": false,
+    "dense_encoder_batch_size_calls": [
+      32,
+      16
+    ],
+    "dense_encoder_stepped_down_deterministically": true,
+    "dense_encoder_output_shape": [
+      3,
+      1
+    ],
+    "reranker_batch_size_calls": [
+      16,
+      8
+    ],
+    "reranker_stepped_down_deterministically": true,
+    "reranker_output_shape": [
+      1
+    ],
+    "proves": "DenseEncoder.encode_documents() and Reranker.score() actually retry through runtime.torch_adaptive_batch on a real OOM exception, stepping the batch size down deterministically (32->16, 16->8), not via the standalone adaptive_batch module in isolation"
   }
 }

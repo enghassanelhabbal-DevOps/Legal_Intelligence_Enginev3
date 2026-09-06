@@ -97,6 +97,28 @@ python_version = "3.12"
 strict = false
 ignore_missing_imports = true
 
+# generation/backends/* requires torch/transformers to type-check
+# correctly (real transformers stubs surface genuine pre-existing type
+# issues there once installed) and is reachable from the "governed
+# modules" CI gate (runtime/domain/evaluation/core) purely via mypy's
+# static import-following through src/legal_ai/__init__.py's package-level
+# `from . import ... generation ...` convenience import — not because any
+# governed module actually depends on it. See DR-034.
+[[tool.mypy.overrides]]
+module = "src.legal_ai.generation.backends.*"
+ignore_errors = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+# Root cause of the long-standing "python3 -m pytest passes, bare pytest
+# fails with ModuleNotFoundError: No module named 'src'" discrepancy
+# (tracked as an open Stage 2 gate since the first session): `python -m
+# pytest` gets sys.path[0] = cwd for free from Python's own `-m` handling;
+# the standalone `pytest` console-script's sys.path[0] is the script's own
+# directory instead, so `import src...` in every test file only resolved
+# by accident, depending on invocation style. `pythonpath` is pytest's own
+# (>=7.0) mechanism for this exact situation — it makes both invocation
+# styles resolve identically, without requiring `pip install -e .` or a
+# conftest.py sys.path hack. See DR-035.
+pythonpath = ["."]
