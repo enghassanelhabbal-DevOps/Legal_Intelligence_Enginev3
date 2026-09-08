@@ -191,7 +191,10 @@ def prepare_pipeline(
     dtype = choose_dtype(runtime, device)
     LOGGER.info("Inference dtype: %s", dtype)
 
-    encoder = DenseEncoder(DENSE_MODEL_NAME, device, dtype, runtime.max_seq_length)
+    encoder = DenseEncoder(
+        DENSE_MODEL_NAME, device, dtype, runtime.max_seq_length,
+        max_concurrency=runtime.max_model_concurrency,
+    )
     bm25 = BM25([tokenize(_lexical_text(d)) for d in documents])
     index = build_index(documents, encoder, bm25, runtime.dense_batch_size, out_dir)
 
@@ -199,7 +202,10 @@ def prepare_pipeline(
     if load_reranker:
         # Import lazily so that retrieval does not hard-depend on reranking
         from src.legal_ai.reranking import Reranker  # noqa: PLC0415
-        reranker = Reranker(RERANKER_MODEL_NAME, device, dtype, runtime.max_seq_length)
+        reranker = Reranker(
+            RERANKER_MODEL_NAME, device, dtype, runtime.max_seq_length,
+            max_concurrency=runtime.max_model_concurrency,
+        )
 
     retriever = HybridRetriever(documents, encoder, index, bm25, reranker, pipeline_cfg)
 

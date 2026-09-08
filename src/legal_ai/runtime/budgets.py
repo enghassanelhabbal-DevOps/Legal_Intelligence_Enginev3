@@ -27,6 +27,16 @@ class ResourceBudget:
     max_retries: int
     request_timeout_seconds: float
     memory_target_bytes: int
+    # Bounds concurrent inference calls into a single loaded local model
+    # object (dense encoder / reranker / local LLM) — independent from
+    # max_workers (request admission). Default 1 everywhere: two threads
+    # calling the same model's forward pass concurrently risks VRAM
+    # OOM/allocator fragmentation on GPU profiles, and unpredictable
+    # latency even on CPU profiles. Does NOT bound BM25 (a thread-safe,
+    # lightweight in-memory lookup, not a heavy model object) or remote
+    # generation calls (each is an independent HTTP request/connection,
+    # already bounded by max_workers). See DR-036.
+    max_model_concurrency: int = 1
 
 
 # CPU-minimal: small bounded batches, limited workers, reranker off by

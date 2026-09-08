@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.legal_ai.core.contracts import Answer
 from src.legal_ai.core.logging import get_logger
@@ -16,6 +16,13 @@ from src.legal_ai.core.models import PipelineConfig, RuntimeConfig
 from src.legal_ai.evidence import build_grounded_context, select_evidence, validate_citations
 from src.legal_ai.generation import LLMManager
 from src.legal_ai.ingestion.validation import validate_documents
+
+if TYPE_CHECKING:
+    # Only imported for static type-checking — runtime.plan is torch-free
+    # itself, but importing it eagerly here would still be an unnecessary
+    # module-load-order coupling for a class whose whole point is staying
+    # importable before any runtime/profile decision has been made.
+    from src.legal_ai.runtime.plan import ResolvedRuntimePlan
 
 # `prepare_pipeline`/`prepare_pipeline_from_plan` are deliberately NOT
 # imported at module level: `src.legal_ai.retrieval`'s `__getattr__`
@@ -75,7 +82,7 @@ class QueryService:
     def from_plan(
         cls,
         documents: list[dict[str, Any]],
-        plan: Any,
+        plan: ResolvedRuntimePlan,
         artifact_dir: Path,
         pipeline_cfg: PipelineConfig | None = None,
         llm_config: dict[str, Any] | None = None,
@@ -88,9 +95,11 @@ class QueryService:
         than independently guessed here — retrieval/generation logic
         itself is unchanged, only how it is configured.
 
-        `plan` is typed `Any` to avoid this lightweight-importable module
-        acquiring a hard, module-level dependency on `runtime.plan` at
-        import time for callers that never use this constructor path.
+        `plan` is typed via a `TYPE_CHECKING`-only forward reference
+        (`ResolvedRuntimePlan`) so static type-checking is accurate without
+        this lightweight-importable module acquiring a hard, module-level
+        runtime dependency on `runtime.plan` for callers that never use
+        this constructor path.
         """
         instance = object.__new__(cls)
         validate_documents(documents)
@@ -161,23 +170,54 @@ class QueryService:
         )
 
     def close(self) -> None:
-        """Release GPU memory explicitly."""
-        import gc
+        """Release GPU memory explicitly. Best-effort and lightweight-safe:
 
-        import torch
-
+        - Never imports/requires torch merely to shut down. A REMOTE_LLM
+          deployment with no dense extra installed must be able to close()
+          cleanly (Risk 2 / DR-036) — this only imports torch lazily, and
+          only if a torch-backed component (encoder/reranker) was actually
+          loaded onto this instance.
+        - Never performs a fresh, unprotected `torch.cuda.is_available()`
+          probe as a way to decide what to clean up — that decision comes
+          from which components this instance actually has, not a new
+          global hardware check (the isolated subprocess probe in
+          `runtime.hardware` remains the only sanctioned CUDA discovery
+          path; this method does not duplicate it).
+        - Per-component cleanup failures are logged and shutdown continues
+          — a broken GPU release must not mask the original shutdown or
+          crash the process, but exceptions are not swallowed silently
+          everywhere either (narrow try/except per component).
+        """
         self.llm.unload()
+
+        torch_backed_loaded = False
         for attr in ("encoder", "reranker"):
             obj = getattr(self.retriever, attr, None)
-            if obj is not None:
-                try:
-                    obj.model.to("cpu")
-                    del obj.model
-                except Exception:
-                    pass
+            model = getattr(obj, "model", None) if obj is not None else None
+            if model is None:
+                continue
+            torch_backed_loaded = True
+            try:
+                model.to("cpu")
+                del obj.model
+            except Exception as exc:  # noqa: BLE001 - best-effort cleanup must not abort shutdown
+                LOGGER.warning("Failed to release %s model during shutdown: %s", attr, exc)
+
+        if not torch_backed_loaded:
+            return  # lightweight/REMOTE_LLM instance: nothing torch-backed was ever loaded
+
+        import gc
+
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass  # torch-backed component existed but torch vanished mid-shutdown
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("CUDA cache cleanup failed during shutdown: %s", exc)
 
 
 __all__ = ["QueryService"]

@@ -95,4 +95,37 @@ class BoundedExecutor:
         self.shutdown(wait=True)
 
 
-__all__ = ["BoundedExecutor", "BackpressureRejected"]
+class ModelConcurrencyGate:
+    """Bounds concurrent inference calls into a SINGLE loaded local model
+    object (a dense encoder, reranker, or local LLM backend instance).
+
+    This is deliberately independent from `BoundedExecutor`'s admission
+    control: how many *requests* the API accepts concurrently
+    (`max_workers` + `max_queue_size`) is a different question from how
+    many threads may safely call the SAME model object's forward pass at
+    once. `BoundedExecutor` allowing `max_workers=4` concurrent requests
+    does NOT imply the underlying GPU-resident model can safely run 4
+    concurrent inferences — that risks VRAM OOM, CUDA allocator
+    fragmentation, and unpredictable latency (RESOURCE_RELIABILITY_SPEC.md
+    / DR-036). Each model-owning object (e.g. `DenseEncoder`, `Reranker`)
+    holds its own gate sized from `ResourceBudget.max_model_concurrency`
+    (conservatively 1 by default) and enters it as a context manager
+    around its actual forward-pass call — a minimal semaphore, not a
+    scheduler.
+    """
+
+    def __init__(self, max_concurrency: int) -> None:
+        if max_concurrency < 1:
+            raise ValueError(f"max_concurrency must be >= 1, got {max_concurrency}")
+        self.max_concurrency = max_concurrency
+        self._semaphore = threading.Semaphore(max_concurrency)
+
+    def __enter__(self) -> ModelConcurrencyGate:
+        self._semaphore.acquire()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._semaphore.release()
+
+
+__all__ = ["BoundedExecutor", "BackpressureRejected", "ModelConcurrencyGate"]

@@ -15,10 +15,10 @@ from sentence_transformers import CrossEncoder
 from src.legal_ai.core.logging import get_logger
 from src.legal_ai.core.models import RetrievalHit
 from src.legal_ai.runtime.adaptive_batch import AdaptiveBatchState, initial_state
+from src.legal_ai.runtime.execution import ModelConcurrencyGate
 from src.legal_ai.runtime.torch_adaptive_batch import run_batch_with_adaptive_policy
 
 LOGGER = get_logger(__name__)
-
 
 
 class Reranker:
@@ -35,6 +35,7 @@ class Reranker:
         dtype: torch.dtype,
         max_seq_length: int = 1024,
         compile_model: bool = False,
+        max_concurrency: int = 1,
     ) -> None:
         LOGGER.info("Loading reranker: %s (device=%s)", model_name, device)
         model_kwargs: dict = {}
@@ -59,6 +60,10 @@ class Reranker:
         # pattern (runtime.adaptive_batch / runtime.torch_adaptive_batch),
         # persisted across score() calls on this instance.
         self._batch_state: AdaptiveBatchState | None = None
+        # See DenseEncoder._concurrency_gate — bounds concurrent forward
+        # passes into THIS reranker object, independent from request
+        # admission concurrency.
+        self._concurrency_gate = ModelConcurrencyGate(max_concurrency)
 
     def score(
         self,
@@ -92,7 +97,8 @@ class Reranker:
                 )
             return np.asarray(scores, dtype=np.float32).reshape(-1)
 
-        result, self._batch_state = run_batch_with_adaptive_policy(self._batch_state, _score_at)
+        with self._concurrency_gate:
+            result, self._batch_state = run_batch_with_adaptive_policy(self._batch_state, _score_at)
         return result
 
     def unload(self) -> None:

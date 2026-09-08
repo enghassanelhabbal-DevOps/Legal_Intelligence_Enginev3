@@ -71,6 +71,7 @@ class ResolvedRuntimePlan:
             enable_tf32=self.profile == ExecutionProfile.ACCELERATED,
             compile_reranker=False,  # never enabled by policy resolution alone (CC 5.2 dev target)
             max_seq_length=self.budget.max_seq_length,
+            max_model_concurrency=self.budget.max_model_concurrency,
         )
 
     def to_pipeline_config(self, base: PipelineConfig | None = None) -> PipelineConfig:

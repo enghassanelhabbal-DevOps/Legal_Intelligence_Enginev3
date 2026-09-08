@@ -26,7 +26,11 @@ from src.legal_ai.runtime.cpu_topology import (
     discover_cpu_topology,
     recommended_thread_env,
 )
-from src.legal_ai.runtime.execution import BackpressureRejected, BoundedExecutor
+from src.legal_ai.runtime.execution import (
+    BackpressureRejected,
+    BoundedExecutor,
+    ModelConcurrencyGate,
+)
 from src.legal_ai.runtime.faults import (
     FailureEvent,
     FaultClass,
@@ -59,6 +63,7 @@ __all__ = [
     "RECOVERY_STEP_MULTIPLIER",
     "BoundedExecutor",
     "BackpressureRejected",
+    "ModelConcurrencyGate",
     "ResourceBudget",
     "budget_for_profile",
     "ContainerRuntime",

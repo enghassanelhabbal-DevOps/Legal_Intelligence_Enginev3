@@ -32,6 +32,14 @@ class RuntimeConfig:
     enable_tf32: bool = True
     compile_reranker: bool = False  # torch.compile — off by default (CC 5.2)
     max_seq_length: int = 1024
+    # Bounds concurrent inference calls into a SINGLE loaded model object
+    # (dense encoder, reranker, or local LLM backend) — independent from
+    # request-admission concurrency (BoundedExecutor). Conservative
+    # default of 1: on shared GPU/VRAM, two threads calling the same
+    # model's forward pass concurrently risks OOM/allocator fragmentation
+    # and unpredictable latency, not just a correctness risk. See DR-036
+    # / RESOURCE_RELIABILITY_SPEC.md.
+    max_model_concurrency: int = 1
 
 
 # ---------------------------------------------------------------------------

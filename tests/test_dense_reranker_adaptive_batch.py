@@ -123,6 +123,129 @@ def test_encode_documents_bounded_retry_reraises_when_exhausted():
         assert encoder.model.calls == [2, 1]
 
 
+class _WrongShapeSentenceTransformer(_FlakySentenceTransformer):
+    """Simulates a programming/config bug (invalid tensor shape), NOT a
+    resource condition — must propagate immediately, never be retried."""
+
+    def encode(self, texts, batch_size, **kwargs):
+        self.calls.append(batch_size)
+        raise RuntimeError("mat1 and mat2 shapes cannot be multiplied (3x4 and 5x6)")
+
+
+class _ValueErrorSentenceTransformer(_FlakySentenceTransformer):
+    def encode(self, texts, batch_size, **kwargs):
+        self.calls.append(batch_size)
+        raise ValueError("invalid model configuration: unknown pooling mode")
+
+
+def test_encode_documents_propagates_non_oom_runtime_error_immediately():
+    """Item 18: only resource/OOM conditions may trigger adaptive
+    step-down. A RuntimeError with an unrelated message (shape mismatch —
+    a real programming bug) must propagate on the FIRST attempt, with the
+    batch size never touched."""
+    with patch("src.legal_ai.retrieval.dense.SentenceTransformer", _WrongShapeSentenceTransformer):
+        encoder = DenseEncoder("fake-model", device="cpu", dtype=torch.float32, max_seq_length=64)
+        with pytest.raises(RuntimeError, match="shapes cannot be multiplied"):
+            encoder.encode_documents(["x"], batch_size=32)
+        # Exactly one call, at the original ceiling — no retry, no step-down.
+        assert encoder.model.calls == [32]
+        assert encoder._batch_state.current_batch_size == 32
+        assert encoder._batch_state.consecutive_failures == 0
+
+
+def test_encode_documents_propagates_value_error_immediately_never_classified_as_oom():
+    """A ValueError (invalid config, not a resource condition) must never
+    be caught by the adaptive-batch retry path at all — it isn't even a
+    RuntimeError/MemoryError, so is_out_of_memory_error() must never be
+    asked about it in a way that could swallow it."""
+    with patch(
+        "src.legal_ai.retrieval.dense.SentenceTransformer", _ValueErrorSentenceTransformer
+    ):
+        encoder = DenseEncoder("fake-model", device="cpu", dtype=torch.float32, max_seq_length=64)
+        with pytest.raises(ValueError, match="invalid model configuration"):
+            encoder.encode_documents(["x"], batch_size=32)
+        assert encoder.model.calls == [32]
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ValueError("bad config"),
+        TypeError("unexpected keyword argument"),
+        RuntimeError("size mismatch, m1: [3 x 4], m2: [5 x 6]"),
+        RuntimeError("index out of range in self"),
+        KeyError("missing_field"),
+    ],
+)
+def test_is_out_of_memory_error_rejects_non_resource_exceptions(exc):
+    from src.legal_ai.runtime.torch_adaptive_batch import is_out_of_memory_error
+
+    assert is_out_of_memory_error(exc) is False
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        MemoryError(),
+        RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB"),
+        RuntimeError("OUT OF MEMORY on device 0"),  # case-insensitive match
+    ],
+)
+def test_is_out_of_memory_error_accepts_real_oom_signals(exc):
+    from src.legal_ai.runtime.torch_adaptive_batch import is_out_of_memory_error
+
+    assert is_out_of_memory_error(exc) is True
+
+
+def test_is_out_of_memory_error_accepts_real_torch_cuda_oom_type():
+    from src.legal_ai.runtime.torch_adaptive_batch import is_out_of_memory_error
+
+    assert is_out_of_memory_error(torch.OutOfMemoryError("simulated")) is True
+
+
+class _OrderPreservingSentenceTransformer:
+    """Encodes texts to their own index value so a caller can directly
+    verify embedding[i] still corresponds to texts[i] regardless of how
+    many times the call was retried at a smaller batch size, or how many
+    texts remain in a non-even final batch."""
+
+    def __init__(self, model_name: str, device: str) -> None:
+        self.max_seq_length = None
+        self.calls: list[int] = []
+        self.oom_budget = 0  # number of OOMs to simulate before succeeding
+
+    def encode(self, texts, batch_size, **kwargs):
+        self.calls.append(batch_size)
+        if len(self.calls) <= self.oom_budget:
+            raise RuntimeError("CUDA out of memory. Tried to allocate 1.00 GiB")
+        return np.array([[float(i)] for i in range(len(texts))], dtype=np.float32)
+
+
+@pytest.mark.parametrize(
+    "n_texts,oom_budget,ceiling",
+    [
+        (5, 0, 32),   # single batch, no retry
+        (5, 1, 32),   # one OOM retry (the OUT_OF_MEMORY policy's bounded max: 1 retry)
+        (7, 0, 3),    # non-even final batch vs. ceiling (grouping is internal to encode())
+        (1, 0, 1),    # batch_size=1
+    ],
+)
+def test_output_order_and_count_preserved_across_batch_retry_scenarios(
+    n_texts, oom_budget, ceiling
+):
+    texts = [f"text-{i}" for i in range(n_texts)]
+    with patch(
+        "src.legal_ai.retrieval.dense.SentenceTransformer", _OrderPreservingSentenceTransformer
+    ):
+        encoder = DenseEncoder("fake-model", device="cpu", dtype=torch.float32, max_seq_length=64)
+        encoder.model.oom_budget = oom_budget
+        embeddings = encoder.encode_documents(texts, batch_size=ceiling)
+
+    assert embeddings.shape[0] == n_texts  # output count preserved
+    for i in range(n_texts):
+        assert embeddings[i][0] == float(i)  # embedding[i] corresponds to texts[i]
+
+
 def test_encode_documents_bypass_detection():
     """Fails-if-bypassed guard (item 7): if a future refactor makes
     encode_documents() call self.model.encode() directly instead of

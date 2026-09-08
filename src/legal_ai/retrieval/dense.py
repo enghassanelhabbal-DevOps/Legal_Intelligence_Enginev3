@@ -19,6 +19,7 @@ from sentence_transformers import SentenceTransformer
 
 from src.legal_ai.core.logging import get_logger
 from src.legal_ai.runtime.adaptive_batch import AdaptiveBatchState, initial_state
+from src.legal_ai.runtime.execution import ModelConcurrencyGate
 from src.legal_ai.runtime.torch_adaptive_batch import run_batch_with_adaptive_policy
 
 LOGGER = get_logger(__name__)
@@ -37,6 +38,7 @@ class DenseEncoder:
         device: str,
         dtype: torch.dtype,
         max_seq_length: int = 1024,
+        max_concurrency: int = 1,
     ) -> None:
         LOGGER.info("Loading dense model: %s (device=%s, dtype=%s)", model_name, device, dtype)
         self.model = SentenceTransformer(model_name, device=device)
@@ -52,6 +54,12 @@ class DenseEncoder:
         # the encoder's lifetime rather than re-starting from scratch every
         # call.
         self._batch_state: AdaptiveBatchState | None = None
+        # Bounds concurrent forward passes into THIS model object
+        # (runtime.execution.ModelConcurrencyGate) — independent from how
+        # many concurrent API requests BoundedExecutor admits. Sized from
+        # ResourceBudget.max_model_concurrency via ResolvedRuntimePlan
+        # (conservatively 1 by default); never a value this class invents.
+        self._concurrency_gate = ModelConcurrencyGate(max_concurrency)
 
     # ------------------------------------------------------------------
 
@@ -87,17 +95,20 @@ class DenseEncoder:
                 )
             return np.asarray(embeddings, dtype=np.float32)
 
-        result, self._batch_state = run_batch_with_adaptive_policy(self._batch_state, _encode_at)
+        with self._concurrency_gate:
+            result, self._batch_state = run_batch_with_adaptive_policy(
+                self._batch_state, _encode_at
+            )
         return result
 
     def encode_query(self, query: str) -> np.ndarray:
-        """Encode a single query.  Returns float32 array (1, dim)."""
+        """Encode a single query. Returns float32 array (1, dim)."""
         _autocast = (
             torch.autocast(device_type="cuda", dtype=self.dtype)
             if self.device.startswith("cuda") and self.dtype == torch.bfloat16
             else nullcontext()
         )
-        with torch.inference_mode(), _autocast:
+        with self._concurrency_gate, torch.inference_mode(), _autocast:
             embedding = self.model.encode(
                 [query],
                 normalize_embeddings=True,

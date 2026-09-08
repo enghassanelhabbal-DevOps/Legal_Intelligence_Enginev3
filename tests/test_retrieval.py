@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import unittest
+
 import numpy as np
-from src.legal_ai.retrieval import BM25, DenseIndex, HybridRetriever
+
 from src.legal_ai.core.models import RetrievalHit
+from src.legal_ai.retrieval import BM25, DenseIndex, HybridRetriever
 
 
 class TestRetrievalComponents(unittest.TestCase):
     def test_bm25_basic(self):
-        corpus = [["قانون", "المادة", "عقوبات"], ["مدني", "عقد", "التزام"], ["جنائي", "جريمة", "قانون"]]
+        corpus = [
+            ["قانون", "المادة", "عقوبات"],
+            ["مدني", "عقد", "التزام"],
+            ["جنائي", "جريمة", "قانون"],
+        ]
         bm25 = BM25(corpus)
         top = bm25.top_n("قانون", 2)
         # ensure indices returned and score for first > second (if multiple)
@@ -28,10 +34,18 @@ class TestRetrievalComponents(unittest.TestCase):
 
     def test_dense_preserving_union(self):
         # Prepare dummy RetrievalHit objects using real fields from core.models
-        d1 = RetrievalHit(document_id="1", index=0, text="A", law_name="قانون", article_id="1", dense_score=0.9)
-        d2 = RetrievalHit(document_id="2", index=1, text="B", law_name="قانون", article_id="2", dense_score=0.8)
-        b1 = RetrievalHit(document_id="2", index=1, text="B", law_name="قانون", article_id="2", bm25_score=1.0)
-        b2 = RetrievalHit(document_id="3", index=2, text="C", law_name="قانون", article_id="3", bm25_score=0.5)
+        d1 = RetrievalHit(
+            document_id="1", index=0, text="A", law_name="قانون", article_id="1", dense_score=0.9
+        )
+        d2 = RetrievalHit(
+            document_id="2", index=1, text="B", law_name="قانون", article_id="2", dense_score=0.8
+        )
+        b1 = RetrievalHit(
+            document_id="2", index=1, text="B", law_name="قانون", article_id="2", bm25_score=1.0
+        )
+        b2 = RetrievalHit(
+            document_id="3", index=2, text="C", law_name="قانون", article_id="3", bm25_score=0.5
+        )
         merged = HybridRetriever.dense_preserving_union([d1, d2], [b1, b2], max_candidates=10)
         # dense items should be first in order
         self.assertGreaterEqual(len(merged), 3)

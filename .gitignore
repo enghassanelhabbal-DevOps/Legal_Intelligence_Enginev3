@@ -55,3 +55,9 @@ dist/
 
 # Local runtime
 *.json.tmp
+
+# Transfer-only artifacts (cross-machine delivery bundles/checksums/patch
+# sets) — never belong in tracked source; see DR-038.
+*.bundle
+SHA256SUMS.txt
+/transfer/

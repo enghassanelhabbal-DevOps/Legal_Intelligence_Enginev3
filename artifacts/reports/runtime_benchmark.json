@@ -1,7 +1,7 @@
 {
   "report": "stage2_runtime_benchmark",
   "hardware_discovery": {
-    "discover_hardware_ms": 1475.42,
+    "discover_hardware_ms": 1897.32,
     "cuda_probe_status": "unavailable",
     "cuda_probe_isolation": "spawned_subprocess_with_hard_timeout",
     "snapshot": {
@@ -12,7 +12,7 @@
       "cpu_count_physical": 1,
       "total_ram_bytes": 4192030720,
       "ram_probe_status": "ok",
-      "storage_free_bytes": 4059316224,
+      "storage_free_bytes": 4089126912,
       "cuda": {
         "available": false,
         "device_count": 0,

@@ -81,3 +81,29 @@ def test_hardware_snapshot_to_dict_is_json_serializable():
     # Must not raise: nested CUDAProbeResult/GPUDevice dataclasses need to
     # already be plain dicts/lists after to_dict().
     json.dumps(snapshot.to_dict())
+
+
+def test_hardware_snapshot_never_leaks_hostname_username_or_paths():
+    """Security review (Risk/item 27): the hardware capability report must
+    stay capability-focused — no hostname, username, home directory, cwd,
+    or environment-variable dump, ever, regardless of platform."""
+    import getpass
+    import json
+    import os
+    import socket
+
+    snapshot = discover_hardware(probe_cuda_enabled=False)
+    serialized = json.dumps(snapshot.to_dict())
+
+    hostname = socket.gethostname()
+    username = getpass.getuser()
+    cwd = os.getcwd()
+    home = os.environ.get("HOME", "")
+
+    if hostname:
+        assert hostname not in serialized
+    if username:
+        assert username not in serialized
+    assert cwd not in serialized
+    if home:
+        assert home not in serialized

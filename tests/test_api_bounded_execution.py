@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -156,6 +157,67 @@ def test_query_endpoint_returns_503_under_real_backpressure(small_plan):
         asyncio.run(_run())
     finally:
         executor.shutdown(wait=True)
+
+
+def test_event_loop_stays_responsive_while_a_query_runs_in_the_worker_pool(small_plan):
+    """Risk 4: if query() ever regresses to calling future.result()
+    (blocking) instead of `await asyncio.wrap_future(future)`, this test
+    must fail — a second, unrelated coroutine scheduled on the same event
+    loop must be able to make progress while a slow query is in flight."""
+    release_gate = threading.Event()
+    started = threading.Event()
+
+    def slow_answer(query: str, top_k: int):
+        started.set()
+        release_gate.wait(timeout=5)
+        return _fake_result(query)
+
+    service = SimpleNamespace(answer=slow_answer)
+    executor = BoundedExecutor(small_plan.budget, thread_name_prefix="test-worker")
+    app_module._state["service"] = service
+    app_module._state["executor"] = executor
+    app_module._state["plan"] = small_plan
+    app_module._state["startup_error"] = None
+
+    heartbeat_ticks: list[float] = []
+
+    async def _heartbeat() -> None:
+        # A cooperative coroutine that only makes progress if the event
+        # loop is free to schedule it — proves the loop was never blocked
+        # by query()'s synchronous work running on the calling thread.
+        for _ in range(20):
+            heartbeat_ticks.append(time.perf_counter())
+            await asyncio.sleep(0.01)
+
+    async def _run() -> None:
+        req = app_module.QueryRequest(query="slow query", top_k=3)
+        query_task = asyncio.create_task(app_module.query(req, _FakeRequest(), x_api_key="k"))
+        heartbeat_task = asyncio.create_task(_heartbeat())
+
+        # Give the heartbeat a moment to accumulate several ticks WHILE the
+        # (slow, gated) query is still in flight on its worker thread.
+        await asyncio.get_event_loop().run_in_executor(None, started.wait, 2)
+        await asyncio.sleep(0.1)
+        ticks_while_query_in_flight = len(heartbeat_ticks)
+
+        release_gate.set()
+        await query_task
+        await heartbeat_task
+
+        return ticks_while_query_in_flight
+
+    try:
+        ticks_during = asyncio.run(_run())
+    finally:
+        executor.shutdown(wait=True)
+
+    # If the event loop had been blocked by query() (e.g. a synchronous
+    # future.result() call), zero or almost no heartbeat ticks could have
+    # been scheduled while the query was still gated/in-flight.
+    assert ticks_during >= 5, (
+        f"only {ticks_during} heartbeat ticks ran while the query was in "
+        "flight — the event loop appears to have been blocked"
+    )
 
 
 def test_query_endpoint_bypassing_executor_is_detected(small_plan):
